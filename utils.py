@@ -11,9 +11,9 @@ from dotenv import load_dotenv
 from httpx import HTTPStatusError
 
 from db_utils import add_new_status_to_db, save_parsed_data_to_db, save_parsed_search_data_to_db, \
-    get_content_and_anchors_by_task_id, save_tfidf_results_to_db
+    get_content_and_anchors_by_task_id, save_tf_results_to_db
 from logger_config import get_logger
-from tf_idf import get_idf_scores
+from tf_idf import get_tf_scores
 
 logger = get_logger(__name__)
 
@@ -59,7 +59,8 @@ def clean_urls(urls: list, domain_part) -> list:
         'wiki',
         'kupiprodai',
         'speedtest',
-        'youla'
+        'youla',
+        'vseinstrumenti'
     ]
     stop_list.append(domain_part)
     filtered_urls = [url for url in urls if not any(stop_domain in url for stop_domain in stop_list)][:20]
@@ -195,7 +196,7 @@ async def process_incoming_url(task_id: str, url: str, search_string: str, run_i
             if 'error' in db_data:
                 await run_in_executor(add_new_status_to_db, task_id, db_data['error'])
             else:
-                tf_idf_result = await get_idf_scores(db_data)
-                await run_in_executor(add_new_status_to_db, task_id, "tf-idf done")
-                await run_in_executor(save_tfidf_results_to_db, task_id, tf_idf_result)
+                tf_result = await get_tf_scores(db_data)
+                await run_in_executor(add_new_status_to_db, task_id, "tf done")
+                await run_in_executor(save_tf_results_to_db, task_id, tf_result)
                 await run_in_executor(add_new_status_to_db, task_id, "done")

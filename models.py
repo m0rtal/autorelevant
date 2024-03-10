@@ -72,15 +72,10 @@ class TFIDFResult(Base):
     __tablename__ = 'tfidf_results'
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(String, ForeignKey('tasks.id'))
-    n_gramm = Column(Text)
-    source_score = Column(Float)
-    target_score = Column(Float)
-    search_query = Column(Text)
-    source_freq = Column(Integer)
-    target_freq = Column(Float)
+    word = Column(Text)
     task = relationship("Task", back_populates="tfidf_results")
 
 
 # Создание и очистка базы данных
-# Base.metadata.drop_all(bind=engine)
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)

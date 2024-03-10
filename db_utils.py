@@ -136,18 +136,13 @@ def get_content_and_anchors_by_task_id(task_id: str) -> dict:
         }
 
 
-def save_tfidf_results_to_db(task_id: str, tfidf_result: pandas.DataFrame) -> None:
+def save_tf_results_to_db(task_id: str, tfidf_result: pandas.DataFrame) -> None:
     try:
         with Session() as db_session:
             for _, row in tfidf_result.iterrows():
                 new_result = TFIDFResult(
                     task_id=task_id,
-                    n_gramm=row['n-gramm'],
-                    source_score=row['source_score'],
-                    target_score=row['target_score'],
-                    search_query=row['search_query'],
-                    source_freq=row['source_freq'],
-                    target_freq=row['target_freq']
+                    word=row['word'],
                 )
                 db_session.add(new_result)
             db_session.commit()
@@ -156,27 +151,20 @@ def save_tfidf_results_to_db(task_id: str, tfidf_result: pandas.DataFrame) -> No
         logger.error(f"Error saving TF-IDF results for task {task_id} to DB: {str(e)}")
 
 
-def get_tfidf_results_by_task_id(task_id: str) -> dict:
+def get_tf_results_by_task_id(task_id: str) -> dict:
     try:
         with Session() as db_session:
             # Получаем все результаты TF-IDF для данного task_id
-            tfidf_results = db_session.query(TFIDFResult).filter(TFIDFResult.task_id == task_id).all()
+            tf_results = db_session.query(TFIDFResult).filter(TFIDFResult.task_id == task_id).all()
 
             # Если результаты найдены, формируем список словарей с данными
-            if tfidf_results:
-                results_list = [{
-                    'lsi': result.n_gramm,
-                    'source_score': result.source_score,
-                    'target_score': result.target_score,
-                    'search_query': result.search_query,
-                    'source_freq': result.source_freq,
-                    'target_freq': result.target_freq
-                } for result in tfidf_results]
+            if tf_results:
+                results_list = [result.word for result in tf_results]
 
                 # Формируем итоговый ответ
                 response = {
                     'task_id': task_id,
-                    'tfidf_results': results_list
+                    'tf_results': results_list
                 }
 
                 logger.info(f"TF-IDF results for task {task_id} successfully retrieved from DB.")
@@ -184,14 +172,14 @@ def get_tfidf_results_by_task_id(task_id: str) -> dict:
                 # Если результатов нет, возвращаем сообщение об этом
                 response = {
                     'task_id': task_id,
-                    'message': 'No TF-IDF results found for this task.'
+                    'message': 'No TF results found for this task.'
                 }
-                logger.info(f"No TF-IDF results found for task {task_id} in DB.")
+                logger.info(f"No TF results found for task {task_id} in DB.")
 
             return response
 
     except Exception as e:
-        logger.error(f"Error retrieving TF-IDF results for task {task_id} from DB: {str(e)}")
+        logger.error(f"Error retrieving TF results for task {task_id} from DB: {str(e)}")
         return {
             'error': str(e)
         }

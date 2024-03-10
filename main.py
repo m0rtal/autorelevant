@@ -4,7 +4,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, BackgroundTasks, Request
 
-from db_utils import add_task_to_db, get_latest_task_status_sync, get_tfidf_results_by_task_id
+from db_utils import add_task_to_db, get_latest_task_status_sync, get_tf_results_by_task_id
 from logger_config import get_logger
 from utils import process_incoming_url
 
@@ -37,8 +37,8 @@ async def process_url(request: Request):
     status = await run_in_threadpool(get_latest_task_status_sync, task_id)
     if status:
         if status == 'done':
-            result = await run_in_threadpool(get_tfidf_results_by_task_id, task_id)
-            return {"task_id": task_id, "status": status, 'result': result.get('tfidf_results')}
+            result = await run_in_threadpool(get_tf_results_by_task_id, task_id)
+            return {'lsi': result.get('tf_results')}
         else:
             return {"task_id": task_id, "status": status}
     return {"message": "Статус для заданной задачи не найден"}
