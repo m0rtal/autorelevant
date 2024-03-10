@@ -17,7 +17,6 @@ from tf_idf import get_tf_scores
 
 logger = get_logger(__name__)
 
-
 # Загрузка переменных из .env файла
 load_dotenv()
 
@@ -120,9 +119,8 @@ async def fetch_and_parse(url: str, task_id: str):
         }
 
 
-async def yandex_search(query, main_url, domain=yandex_domain, cat_id=yandex_catalogue_id, filter=yandex_lng,
-                        region=yandex_region,
-                        lng=yandex_lng, api_ky=yandex_api_key):
+async def yandex_search(query, main_url, region=225, domain=yandex_domain, cat_id=yandex_catalogue_id,
+                        filter=yandex_lng, lng=yandex_lng, api_ky=yandex_api_key):
     # Создаем URL для запроса
     url = f"https://yandex.{domain}/search/xml"
     # Параметры запроса
@@ -163,7 +161,7 @@ async def yandex_search(query, main_url, domain=yandex_domain, cat_id=yandex_cat
             logger.error(f"Ошибка в выполнении запроса: {e}")
 
 
-async def process_incoming_url(task_id: str, url: str, search_string: str, run_in_executor):
+async def process_incoming_url(task_id: str, url: str, search_string: str, region: int, run_in_executor):
     parsing_result = await fetch_and_parse(url, task_id)
     if 'error' in parsing_result:
         # Если ошибка, сохраняем информацию об ошибке в БД
@@ -173,7 +171,7 @@ async def process_incoming_url(task_id: str, url: str, search_string: str, run_i
         await run_in_executor(save_parsed_data_to_db, task_id, parsing_result)
         await run_in_executor(add_new_status_to_db, task_id, "url parsed")
         # Ищем в яндексе
-        search_results = await yandex_search(search_string, url)
+        search_results = await yandex_search(search_string, url, region)
         if 'error' in search_results:
             await run_in_executor(add_new_status_to_db, task_id, search_results['error'])
         else:

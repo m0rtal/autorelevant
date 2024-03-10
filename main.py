@@ -22,8 +22,9 @@ async def run_in_threadpool(func, *args, **kwargs):
 async def process_url(request: Request):
     url = request.query_params.get('url')
     search_string = request.query_params.get('search_string')
+    region = request.query_params.get('region')
     if not url or not search_string:
-        return {"error": "URL и search_string должны быть указаны"}
+        return {"error": "URL, search_string и region должны быть указаны"}
 
     task_id = str(uuid4())
     logger.info(f"Получена новая задача {task_id} для URL {url}")
@@ -32,7 +33,7 @@ async def process_url(request: Request):
     await run_in_threadpool(add_task_to_db, task_id, url, search_string)
 
     # Обрабатываем запрос
-    await process_incoming_url(task_id=task_id, url=url, search_string=search_string, run_in_executor=run_in_threadpool)
+    await process_incoming_url(task_id=task_id, url=url, search_string=search_string, region=region, run_in_executor=run_in_threadpool)
 
     status = await run_in_threadpool(get_latest_task_status_sync, task_id)
     if status:
