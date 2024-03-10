@@ -1,5 +1,6 @@
 from datetime import datetime
-from sqlalchemy import create_engine, Column, String, Integer, ForeignKey, DateTime, Text
+from sqlalchemy import create_engine, Column, String, Integer, ForeignKey, Text
+from sqlalchemy.dialects.mysql import TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from dotenv import load_dotenv
@@ -17,7 +18,8 @@ database = os.getenv("DB_NAME")
 DATABASE_URL = f"mysql+mysqlconnector://{username}:{password}@{hostname}/{database}"
 
 # Настройка подключения к базе данных
-engine = create_engine('sqlite:///db.sqlite', echo=True)
+# engine = create_engine('sqlite:///db.sqlite', echo=True)
+engine = create_engine(DATABASE_URL, echo=True)
 Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 
@@ -38,7 +40,7 @@ class TaskStatus(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(String(255), ForeignKey('tasks.id'))
     status = Column(String(255), default="submitted")
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(TIMESTAMP(fsp=6), default=datetime.utcnow)
     task = relationship("Task", back_populates="statuses")
 
 
