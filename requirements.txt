@@ -1,0 +1,13 @@
+aiohttp
+scrapy
+beautifulsoup4
+sqlalchemy
+uvicorn
+httpx
+sqlalchemy
+scikit-learn
+nltk
+pandas
+numpy
+fastapi
+python-dotenv
