@@ -2,11 +2,10 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
-from fastapi import FastAPI, BackgroundTasks
+from fastapi import FastAPI, BackgroundTasks, Request
 
 from db_utils import add_task_to_db, get_latest_task_status_sync, get_tfidf_results_by_task_id
 from logger_config import get_logger
-from models import SubmitURL
 from utils import process_incoming_url
 
 logger = get_logger(__name__)
@@ -19,17 +18,22 @@ async def run_in_threadpool(func, *args, **kwargs):
     return await loop.run_in_executor(executor, lambda: func(*args, **kwargs))
 
 
-@app.post("/submit-url", status_code=202)
-async def submit_url(request: SubmitURL, background_tasks: BackgroundTasks):
+@app.get("/process-url")
+async def process_url(request: Request):
+    url = request.query_params.get('url')
+    search_string = request.query_params.get('search_string')
+    if not url or not search_string:
+        return {"error": "URL и search_string должны быть указаны"}
+
     task_id = str(uuid4())
-    logger.info(f"Получена новая задача {task_id} для URL {request.url}")
-    await run_in_threadpool(add_task_to_db, task_id, request.url, request.search_string)
-    background_tasks.add_task(process_incoming_url, request.url, task_id, run_in_threadpool)
-    return {"message": "Задача принята", "task_id": task_id}
+    logger.info(f"Получена новая задача {task_id} для URL {url}")
 
+    # Добавляем новую задачу в БД
+    await run_in_threadpool(add_task_to_db, task_id, url, search_string)
 
-@app.get("/task/{task_id}")
-async def task_status(task_id: str):
+    # Обрабатываем запрос
+    await process_incoming_url(task_id=task_id, url=url, search_string=search_string, run_in_executor=run_in_threadpool)
+
     status = await run_in_threadpool(get_latest_task_status_sync, task_id)
     if status:
         if status == 'done':

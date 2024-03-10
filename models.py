@@ -57,7 +57,6 @@ class ParsedSearchData(Base):
     content = Column(Text)
     h1 = Column(String)
     url = Column(String)
-    # task = relationship("Task", back_populates="parsed_data")
     search_anchors = relationship("SearchAnchor", back_populates="parsed_search_data")
 
 
@@ -82,12 +81,6 @@ class TFIDFResult(Base):
     task = relationship("Task", back_populates="tfidf_results")
 
 
-# Вспомогательный класс для валидации данных
-class SubmitURL(BaseModel):
-    url: str
-    search_string: str = None
-
-
 # Создание и очистка базы данных
-# Base.metadata.drop_all(bind=engine)
+Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)

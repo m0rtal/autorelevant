@@ -32,7 +32,6 @@ async def get_idf_scores(db_data):
     # Формируем итоговую таблицу
     df_tfidf = pd.DataFrame(
         {'n-gramm': features, 'source_score': tfidf_means_source.A1, 'target_score': tfidf_means_target.A1})
-    # df_tfidf['difference'] = df_tfidf['source_score'] - df_tfidf['target_score']
 
     # Сортируем по разнице в пользу сторонних сайтов
     df_tfidf_sorted = df_tfidf.sort_values(by='target_score', ascending=False)
@@ -58,7 +57,5 @@ async def get_idf_scores(db_data):
     # Добавляем встречаемость слов в оригинальном и целевых документах
     df_tfidf_sorted['source_freq'] = df_tfidf_sorted['n-gramm'].apply(lambda x: source_word_count.get(x, 0))
     df_tfidf_sorted['target_freq'] = df_tfidf_sorted['n-gramm'].apply(lambda x: average_frequency.get(x, 0))
-
-    df_tfidf_sorted = df_tfidf_sorted.query("source_freq != 0 and target_freq != 0")
 
     return df_tfidf_sorted

@@ -75,7 +75,7 @@ def parse_response_content(content: bytes, task_id: str) -> dict:
     if page_content:
         page_content = re.sub(r'\s+', ' ', page_content).strip()
 
-    h1 = soup.find('h1').get_text(strip=True) if soup.find('h1') else None
+    h1 = soup.find('h1').get_text() if soup.find('h1') else None
     anchors_data = [' '.join(a.stripped_strings) for a in soup.find_all('a', href=True) if
                     ' '.join(a.stripped_strings).strip()]
 
@@ -162,7 +162,7 @@ async def yandex_search(query, main_url, domain=yandex_domain, cat_id=yandex_cat
             logger.error(f"Ошибка в выполнении запроса: {e}")
 
 
-async def process_incoming_url(url: str, task_id: str, run_in_executor):
+async def process_incoming_url(task_id: str, url: str, search_string: str, run_in_executor):
     parsing_result = await fetch_and_parse(url, task_id)
     if 'error' in parsing_result:
         # Если ошибка, сохраняем информацию об ошибке в БД
@@ -172,7 +172,7 @@ async def process_incoming_url(url: str, task_id: str, run_in_executor):
         await run_in_executor(save_parsed_data_to_db, task_id, parsing_result)
         await run_in_executor(add_new_status_to_db, task_id, "url parsed")
         # Ищем в яндексе
-        search_results = await yandex_search(parsing_result['h1'], url)
+        search_results = await yandex_search(search_string, url)
         if 'error' in search_results:
             await run_in_executor(add_new_status_to_db, task_id, search_results['error'])
         else:
