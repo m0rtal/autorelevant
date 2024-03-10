@@ -63,15 +63,20 @@ def save_parsed_data_to_db(task_id: str, parsing_result: dict) -> None:
             db_session.flush()  # Это гарантирует, что parsed_data получит id после добавления в сессию, но до commit
             logger.info(f"Parsed data for task {task_id} flushed to DB.")
 
-            # Добавляем якоря
-            for anchor_text in parsing_result.get('anchors', []):
-                anchor = Anchor(parsed_data_id=parsed_data.id, anchor_text=anchor_text)
-                db_session.add(anchor)
+            # Создаем список объектов Anchor для пакетной записи
+            anchors = [
+                Anchor(parsed_data_id=parsed_data.id, anchor_text=anchor_text)
+                for anchor_text in parsing_result.get('anchors', [])
+            ]
+
+            # Пакетная запись якорей в базу данных
+            db_session.bulk_save_objects(anchors)
 
             db_session.commit()
             logger.info(f"Anchors for task {task_id} added to DB.")
     except Exception as e:
         logger.error(f"Error saving parsed data for task {task_id} to DB: {str(e)}")
+
 
 
 def save_parsed_search_data_to_db(task_id: str, parsing_result: dict, search_url: str) -> None:
@@ -87,16 +92,19 @@ def save_parsed_search_data_to_db(task_id: str, parsing_result: dict, search_url
             db_session.flush()  # Это гарантирует, что parsed_search_data получит id после добавления в сессию, но до commit
             logger.info(f"Parsed data for task {task_id} flushed to DB.")
 
-            # Добавляем якоря
-            for anchor_text in parsing_result.get('anchors',
-                                                  []):  # Используем get для избежания KeyError, если 'anchors' нет
-                search_anchor = SearchAnchor(parsed_search_data_id=parsed_search_data.id, anchor_text=anchor_text)
-                db_session.add(search_anchor)
+            # Подготавливаем якоря для пакетной записи
+            anchors = parsing_result.get('anchors', [])
+            search_anchors = [
+                SearchAnchor(parsed_search_data_id=parsed_search_data.id, anchor_text=anchor_text) for anchor_text in anchors
+            ]
 
+            # Добавляем все якоря пакетно
+            db_session.add_all(search_anchors)
             db_session.commit()
             logger.info(f"Anchors for task {task_id} added to DB.")
     except Exception as e:
         logger.error(f"Error saving parsed data for task {task_id} to DB: {str(e)}")
+
 
 
 def get_content_and_anchors_by_task_id(task_id: str) -> dict:

@@ -12,3 +12,4 @@ numpy
 fastapi
 python-dotenv
 pymystem3
+mysql-connector-python
