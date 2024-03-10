@@ -2,7 +2,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
-from fastapi import FastAPI, BackgroundTasks, Request
+from fastapi import FastAPI, Request
 
 from db_utils import add_task_to_db, get_latest_task_status_sync, get_tf_results_by_task_id
 from logger_config import get_logger
@@ -33,7 +33,8 @@ async def process_url(request: Request):
     await run_in_threadpool(add_task_to_db, task_id, url, search_string)
 
     # Обрабатываем запрос
-    await process_incoming_url(task_id=task_id, url=url, search_string=search_string, region=region, run_in_executor=run_in_threadpool)
+    await process_incoming_url(task_id=task_id, url=url, search_string=search_string, region=region,
+                               run_in_executor=run_in_threadpool)
 
     status = await run_in_threadpool(get_latest_task_status_sync, task_id)
     if status:

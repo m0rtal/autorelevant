@@ -78,7 +78,6 @@ def save_parsed_data_to_db(task_id: str, parsing_result: dict) -> None:
         logger.error(f"Error saving parsed data for task {task_id} to DB: {str(e)}")
 
 
-
 def save_parsed_search_data_to_db(task_id: str, parsing_result: dict, search_url: str) -> None:
     try:
         with Session() as db_session:
@@ -95,7 +94,8 @@ def save_parsed_search_data_to_db(task_id: str, parsing_result: dict, search_url
             # Подготавливаем якоря для пакетной записи
             anchors = parsing_result.get('anchors', [])
             search_anchors = [
-                SearchAnchor(parsed_search_data_id=parsed_search_data.id, anchor_text=anchor_text) for anchor_text in anchors
+                SearchAnchor(parsed_search_data_id=parsed_search_data.id, anchor_text=anchor_text) for anchor_text in
+                anchors
             ]
 
             # Добавляем все якоря пакетно
@@ -104,7 +104,6 @@ def save_parsed_search_data_to_db(task_id: str, parsing_result: dict, search_url
             logger.info(f"Anchors for task {task_id} added to DB.")
     except Exception as e:
         logger.error(f"Error saving parsed data for task {task_id} to DB: {str(e)}")
-
 
 
 def get_content_and_anchors_by_task_id(task_id: str) -> dict:

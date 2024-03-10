@@ -1,8 +1,9 @@
+import re  # Для работы с регулярными выражениями
+from collections import Counter
+
 import numpy as np
 import pandas as pd
 from pymystem3 import Mystem
-from collections import Counter, defaultdict
-import re  # Для работы с регулярными выражениями
 
 mystem = Mystem()
 
@@ -55,7 +56,8 @@ async def get_tf_scores(db_data: dict) -> dict:
         lemmas = clean_and_lemmatize(text)
         target_lemmas_list.append(lemmas)
         text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
-        words = [word.lower() for word in text.split() if mystem.lemmatize(word.lower())[0] not in STOP_WORDS and word.lower().strip()]
+        words = [word.lower() for word in text.split() if
+                 mystem.lemmatize(word.lower())[0] not in STOP_WORDS and word.lower().strip()]
         all_words.extend(words)
 
     words_counts = Counter(all_words)

@@ -1,10 +1,11 @@
+import os
 from datetime import datetime
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine, Column, String, Integer, ForeignKey, Text
 from sqlalchemy.dialects.mysql import TIMESTAMP
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
-from dotenv import load_dotenv
-import os
 
 load_dotenv()  # Загружаем переменные окружения из .env файла
 
