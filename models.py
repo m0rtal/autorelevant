@@ -82,5 +82,5 @@ class TFIDFResult(Base):
 
 
 # Создание и очистка базы данных
-Base.metadata.drop_all(bind=engine)
+# Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
