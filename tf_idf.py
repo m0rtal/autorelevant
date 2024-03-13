@@ -1,33 +1,18 @@
-import re  # Для работы с регулярными выражениями
+import re
 from collections import Counter
 
+import nltk
 import numpy as np
 import pandas as pd
+from nltk.corpus import stopwords
 from pymystem3 import Mystem
 
 mystem = Mystem()
 
-# Примерный список стоп-слов, может быть расширен или изменен
-STOP_WORDS = set([
-    "и", "в", "во", "не", "что", "он", "на", "я", "с", "со", "как",
-    "а", "то", "все", "она", "так", "его", "но", "да", "ты", "к", "у",
-    "же", "вы", "за", "бы", "по", "только", "ее", "мне", "было",
-    "вот", "от", "меня", "еще", "нет", "о", "из", "ему", "теперь",
-    "когда", "даже", "ну", "вдруг", "ли", "если", "уже", "или", "ни",
-    "быть", "был", "него", "до", "вас", "нибудь", "опять", "уж",
-    "вам", "ведь", "там", "потом", "себя", "ничего", "ей", "может",
-    "они", "тут", "где", "есть", "надо", "ней", "для", "мы", "тебя",
-    "их", "чем", "была", "сам", "чтоб", "без", "будто", "чего", "раз",
-    "тоже", "себе", "под", "будет", "ж", "тогда", "кто", "этот",
-    "того", "потому", "этого", "какой", "совсем", "ним", "здесь",
-    "этом", "один", "почти", "мой", "тем", "чтобы", "нее", "сейчас",
-    "были", "куда", "зачем", "всех", "никогда", "можно", "при",
-    "наконец", "два", "об", "другой", "хоть", "после", "над", "больше",
-    "тот", "через", "эти", "нас", "про", "всего", "них", "какая",
-    "много", "разве", "три", "эту", "моя", "впрочем", "хорошо", "свою",
-    "этой", "перед", "иногда", "лучше", "чуть", "том", "нельзя",
-    "такой", "им", "более", "всегда", "конечно", "всю", "между", "л"
-])
+# Загружаем набор стоп-слов для русского языка
+nltk.download('punkt')
+nltk.download('stopwords')
+STOP_WORDS = stopwords.words('russian')
 
 
 async def get_tf_scores(db_data: dict) -> dict:
@@ -35,27 +20,31 @@ async def get_tf_scores(db_data: dict) -> dict:
     Асинхронная функция для подсчёта TF (частоты слов) в исходном и целевых текстах,
     учитывая лемматизацию слов и исключая стоп-слова и не-слова.
     """
+
+    def cleanup_text(text):
+        text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
+        tokens = nltk.word_tokenize(text)
+        filtered_tokens = [token.lower() for token in tokens if token.lower() not in STOP_WORDS and len(token) >= 3]
+        return ' '.join(filtered_tokens)
+
+    def lemmatize(text):
+        lemmas = mystem.lemmatize(text)
+        return [lemma.lower() for lemma in lemmas if lemma not in STOP_WORDS and lemma.strip()]
+
     source_text = db_data.get('parsed_data').get('content')
     target_texts = [record.get('content') for record in db_data.get('parsed_search_data')]
 
-    def clean_and_lemmatize(text):
-        # Удаляем не-слова
-        text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
-        # Лемматизация
-        lemmas = mystem.lemmatize(text)
-        # Удаляем стоп-слова и пустые строки после лемматизации
-        return [lemma.lower() for lemma in lemmas if lemma not in STOP_WORDS and lemma.strip()]
-
     # Лемматизация и очистка исходного текста
-    source_lemmas = clean_and_lemmatize(source_text)
+    source_lemmas = lemmatize(cleanup_text(source_text))
     source_counter = Counter(source_lemmas)
 
     target_lemmas_list = []
     all_words = []
     for text in target_texts:
-        lemmas = clean_and_lemmatize(text)
+        text = cleanup_text(text)
+        lemmas = lemmatize(text)
         target_lemmas_list.append(lemmas)
-        text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
+
         words = [word.lower() for word in text.split() if
                  mystem.lemmatize(word.lower())[0] not in STOP_WORDS and word.lower().strip()]
         all_words.extend(words)

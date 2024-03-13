@@ -13,3 +13,4 @@ fastapi
 python-dotenv
 pymystem3
 mysql-connector-python
+mltk
