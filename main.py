@@ -22,8 +22,8 @@ async def run_in_threadpool(func, *args, **kwargs):
 async def process_url(request: Request):
     url = request.query_params.get('url')
     search_string = request.query_params.get('search_string')
-    region = request.query_params.get('region')
-    if not url or not search_string:
+    region = int(request.query_params.get('region'))
+    if not url or not search_string or not region:
         return {"error": "URL, search_string и region должны быть указаны"}
 
     task_id = str(uuid4())
