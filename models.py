@@ -86,6 +86,8 @@ class TFIDFResult(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(String(255), ForeignKey('tasks.id'))
     word = Column(Text)
+    diff = Column(Integer, nullable=True)
+    result_type = Column(String(255), nullable=True)
     task = relationship("Task", back_populates="tfidf_results")
 
 

@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 
 from db_utils import add_task_to_db, get_latest_task_status_sync, get_tf_results_by_task_id
 from logger_config import get_logger
-from utils import process_incoming_url
+from utils import process_incoming_url, process_incoming_url_v2
 
 logger = get_logger(__name__)
 app = FastAPI()
@@ -24,7 +24,7 @@ async def process_url(request: Request):
     search_string = request.query_params.get('search_string')
     region = int(request.query_params.get('region'))
     if not url or not search_string or not region:
-        return {"error": "URL, search_string и region должны быть указаны"}
+        return {"error": "URL, search_string и region должны быть указаны!"}
 
     task_id = str(uuid4())
     logger.info(f"Получена новая задача {task_id} для URL {url}")
@@ -41,6 +41,35 @@ async def process_url(request: Request):
         if status == 'done':
             result = await run_in_threadpool(get_tf_results_by_task_id, task_id)
             return {'lsi': result.get('tf_results')}
+        else:
+            return {"task_id": task_id, "status": status}
+    return {"message": "Статус для заданной задачи не найден"}
+
+
+@app.get("/process-url-v2")
+async def process_url(request: Request):
+    url = request.query_params.get('url')
+    search_string = request.query_params.get('search_string')
+    region = int(request.query_params.get('region'))
+    if not url or not search_string or not region:
+        return {"error": "URL, search_string и region должны быть указаны!"}
+
+    task_id = str(uuid4())
+    logger.info(f"Получена новая задача {task_id} для URL {url}")
+
+    # Добавляем новую задачу в БД
+    await run_in_threadpool(add_task_to_db, task_id, url, search_string)
+
+    # Обрабатываем запрос
+    await process_incoming_url_v2(task_id=task_id, url=url, search_string=search_string, region=region,
+                               run_in_executor=run_in_threadpool)
+
+    status = await run_in_threadpool(get_latest_task_status_sync, task_id)
+    if status:
+        if status == 'done':
+            result = await run_in_threadpool(get_tf_results_by_task_id, task_id)
+            # return {'lsi': result.get('tf_results')}
+            return result
         else:
             return {"task_id": task_id, "status": status}
     return {"message": "Статус для заданной задачи не найден"}

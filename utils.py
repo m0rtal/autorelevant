@@ -13,7 +13,7 @@ from httpx import HTTPStatusError
 from db_utils import add_new_status_to_db, save_parsed_data_to_db, save_parsed_search_data_to_db, \
     get_content_and_anchors_by_task_id, save_tf_results_to_db
 from logger_config import get_logger
-from tf_idf import get_tf_scores
+from tf_idf import get_tf_scores, get_all_scores
 
 logger = get_logger(__name__)
 
@@ -59,21 +59,41 @@ def clean_urls(urls: list, domain_part) -> list:
         'kupiprodai',
         'speedtest',
         'youla',
-        'vseinstrumenti'
+        'vseinstrumenti',
+        'krasotaimedicina',
+        'stom-firms',
+        '2gis',
+        'zoon',
+        'infodoctor',
+        'prodoctorov',
+        'stomatologorg'
+        'kleos',
     ]
     stop_list.append(domain_part)
     filtered_urls = [url for url in urls if not any(stop_domain in url for stop_domain in stop_list)][:20]
     return filtered_urls
 
 
+def cleanup_text(content, soup):
+    # Удаление скриптов и стилей
+    for script in soup(["script", "style"]):
+        script.decompose()
+
+    # Очистка текста от лишних пробелов и знаков препинания
+    text_parts = list(soup.stripped_strings)
+    clean_text = ' '.join(text_parts)
+
+    # Удаляем все символы, не являющиеся буквамиe
+    clean_text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", clean_text)
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+    return clean_text
+
 def parse_response_content(content: bytes, task_id: str) -> dict:
     """Функция для обработки успешного HTTP-ответа."""
     soup = BeautifulSoup(content, 'html.parser')
 
     # Извлекаем необходимые данные из soup
-    page_content = soup.get_text()
-    if page_content:
-        page_content = re.sub(r'\s+', ' ', page_content).strip()
+    page_content = cleanup_text(content, soup)
 
     h1 = soup.find('h1').get_text() if soup.find('h1') else None
     anchors_data = [' '.join(a.stripped_strings) for a in soup.find_all('a', href=True) if
@@ -197,4 +217,44 @@ async def process_incoming_url(task_id: str, url: str, search_string: str, regio
                 tf_result = await get_tf_scores(db_data)
                 await run_in_executor(add_new_status_to_db, task_id, "tf done")
                 await run_in_executor(save_tf_results_to_db, task_id, tf_result)
+                await run_in_executor(add_new_status_to_db, task_id, "done")
+
+
+async def process_incoming_url_v2(task_id: str, url: str, search_string: str, region: int, run_in_executor):
+    parsing_result = await fetch_and_parse(url, task_id)
+    if 'error' in parsing_result:
+        # Если ошибка, сохраняем информацию об ошибке в БД
+        await run_in_executor(add_new_status_to_db, task_id, parsing_result['error'])
+    else:
+        # Если ошибок нет, сохраняем собранные данные и добавляем статус "url parsed"
+        await run_in_executor(save_parsed_data_to_db, task_id, parsing_result)
+        await run_in_executor(add_new_status_to_db, task_id, "url parsed")
+        # Ищем в яндексе
+        search_results = await yandex_search(search_string, url, region)
+        if 'error' in search_results:
+            await run_in_executor(add_new_status_to_db, task_id, search_results['error'])
+        else:
+            await run_in_executor(add_new_status_to_db, task_id, "search query result received")
+            logger.info(search_results)
+            # Парсим результаты выдачи яндекса
+            # Создаем список задач для параллельного выполнения
+            tasks = [fetch_and_parse(result, task_id) for result in search_results]
+            # Выполняем задачи асинхронно и получаем результаты
+            results = await asyncio.gather(*tasks)
+            # Обрабатываем результаты
+            for result, search_url in zip(results, search_results):
+                if 'error' in result:
+                    await run_in_executor(add_new_status_to_db, task_id, result['error'])
+                else:
+                    await run_in_executor(save_parsed_search_data_to_db, task_id, result, search_url)
+                    await run_in_executor(add_new_status_to_db, task_id, "search url parsed")
+            # Получим данные из БД
+            db_data = get_content_and_anchors_by_task_id(task_id)
+            if 'error' in db_data:
+                await run_in_executor(add_new_status_to_db, task_id, db_data['error'])
+            else:
+                tf_result = await get_all_scores(db_data)
+                await run_in_executor(add_new_status_to_db, task_id, "tf done")
+                for result_type, df in tf_result.items():
+                    await run_in_executor(save_tf_results_to_db, task_id, df, result_type)
                 await run_in_executor(add_new_status_to_db, task_id, "done")
