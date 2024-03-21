@@ -1,6 +1,8 @@
 from typing import Optional
 
 import pandas
+from sqlalchemy.orm import DeclarativeMeta, InstrumentedAttribute
+from sqlalchemy.orm.exc import FlushError
 
 from logger_config import get_logger
 from models import Session, Task, TaskStatus, ParsedData, Anchor, ParsedSearchData, SearchAnchor, TFIDFResult
@@ -143,19 +145,27 @@ def get_content_and_anchors_by_task_id(task_id: str) -> dict:
         }
 
 
-def save_tf_results_to_db(task_id: str, tfidf_result: pandas.DataFrame) -> None:
+def save_tf_results_to_db(task_id: str, tfidf_result: pandas.DataFrame, result_type=None) -> None:
     try:
         with Session() as db_session:
+            tfidf_result_objs = []
+
             for _, row in tfidf_result.iterrows():
                 new_result = TFIDFResult(
                     task_id=task_id,
                     word=row['word'],
+                    diff=row['diff'],
+                    result_type=result_type
                 )
-                db_session.add(new_result)
+                tfidf_result_objs.append(new_result)
+
+            db_session.bulk_save_objects(tfidf_result_objs)
             db_session.commit()
             logger.info(f"TF-IDF results for task {task_id} added to DB.")
-    except Exception as e:
+    except FlushError as e:
         logger.error(f"Error saving TF-IDF results for task {task_id} to DB: {str(e)}")
+    except Exception as e:
+        logger.error(f"Unexpected error saving TF-IDF results for task {task_id} to DB: {str(e)}")
 
 
 def get_tf_results_by_task_id(task_id: str) -> dict:
@@ -166,7 +176,9 @@ def get_tf_results_by_task_id(task_id: str) -> dict:
 
             # Если результаты найдены, формируем список словарей с данными
             if tf_results:
-                results_list = [result.word for result in tf_results]
+                # results_list = [result.word for result in tf_results]
+                results_list = [{'word': result.word, 'diff': result.diff, 'result_type': result.result_type} if result.result_type else result.word for result in tf_results]
+
 
                 # Формируем итоговый ответ
                 response = {

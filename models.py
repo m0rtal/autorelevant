@@ -19,8 +19,8 @@ database = os.getenv("DB_NAME")
 DATABASE_URL = f"mysql+mysqlconnector://{username}:{password}@{hostname}/{database}"
 
 # Настройка подключения к базе данных
-engine = create_engine('sqlite:///db.sqlite', echo=True)
-# engine = create_engine(DATABASE_URL, echo=True)
+# engine = create_engine('sqlite:///db.sqlite', echo=True)
+engine = create_engine(DATABASE_URL, echo=True)
 Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 
@@ -86,6 +86,8 @@ class TFIDFResult(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     task_id = Column(String(255), ForeignKey('tasks.id'))
     word = Column(Text)
+    diff = Column(Integer, nullable=True)
+    result_type = Column(String(255), nullable=True)
     task = relationship("Task", back_populates="tfidf_results")
 
 
