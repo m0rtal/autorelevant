@@ -177,7 +177,8 @@ def get_tf_results_by_task_id(task_id: str) -> dict:
             # Если результаты найдены, формируем список словарей с данными
             if tf_results:
                 # results_list = [result.word for result in tf_results]
-                results_list = [{'word': result.word, 'diff': result.diff, 'result_type': result.result_type} for result in tf_results]
+                results_list = [{'word': result.word, 'diff': result.diff, 'result_type': result.result_type} if result.result_type else result.word for result in tf_results]
+
 
                 # Формируем итоговый ответ
                 response = {
