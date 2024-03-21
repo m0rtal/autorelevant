@@ -19,8 +19,8 @@ database = os.getenv("DB_NAME")
 DATABASE_URL = f"mysql+mysqlconnector://{username}:{password}@{hostname}/{database}"
 
 # Настройка подключения к базе данных
-engine = create_engine('sqlite:///db.sqlite', echo=True)
-# engine = create_engine(DATABASE_URL, echo=True)
+# engine = create_engine('sqlite:///db.sqlite', echo=True)
+engine = create_engine(DATABASE_URL, echo=True)
 Session = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 Base = declarative_base()
 

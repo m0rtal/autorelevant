@@ -85,7 +85,7 @@ async def get_tf_scores(db_data: dict) -> dict:
     df['diff'] = df['target_freq'] - df['source_freq']
     df = df.sort_values(by='diff', ascending=False)
     df = df.merge(max_counts_per_lemma, how='left', on='source_word')
-    df = df[:20]
+    df = df[:25]
 
     return df
 
@@ -158,7 +158,7 @@ async def get_all_scores(db_data: dict) -> dict:
     less_then_rivals = df.sort_values(by='diff', ascending=False)
     less_then_rivals = less_then_rivals[(less_then_rivals['source_freq'] > 0) & (less_then_rivals['diff'] > 0)]
     less_then_rivals = less_then_rivals.merge(max_counts_per_lemma, how='left', on='source_word')
-    less_then_rivals = less_then_rivals[:20]
+    less_then_rivals = less_then_rivals[:25]
     less_then_rivals = less_then_rivals[['word', 'diff']]
     less_then_rivals['diff'] = less_then_rivals['diff'].apply(ceil)
 
@@ -166,14 +166,14 @@ async def get_all_scores(db_data: dict) -> dict:
     more_then_rivals = df.sort_values(by='diff', ascending=True)
     more_then_rivals = more_then_rivals[(more_then_rivals['target_freq'] > 0) & (more_then_rivals['diff'] < 0)]
     more_then_rivals = more_then_rivals.merge(max_counts_per_lemma, how='left', on='source_word')
-    more_then_rivals = more_then_rivals[:20]
+    more_then_rivals = more_then_rivals[:25]
     more_then_rivals = more_then_rivals[['source_word', 'diff']].rename(columns={'source_word': 'word'})
     more_then_rivals['diff'] = more_then_rivals['diff'].apply(abs).apply(ceil)
 
     # Удалить
     for_deletion = df.sort_values(by='diff', ascending=True)
     for_deletion = for_deletion[for_deletion['target_freq'] == 0]
-    for_deletion = for_deletion[:20]
+    for_deletion = for_deletion[:25]
     for_deletion = for_deletion[['source_word', 'diff']].rename(columns={'source_word': 'word'})
     for_deletion['diff'] = for_deletion['diff'].apply(abs).apply(ceil)
 
