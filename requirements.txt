@@ -5,3 +5,5 @@ aiosqlite
 loguru
 asyncio
 bs4
+uvicorn
+nltk

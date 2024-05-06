@@ -13,8 +13,18 @@ import asyncio
 import xml.etree.ElementTree as ET
 
 from dotenv import load_dotenv
-
 load_dotenv()
+
+import nltk
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import stopwords
+
+nltk.download('punkt')
+nltk.download('wordnet')
+nltk.download('stopwords')
+
+lemmatizer = WordNetLemmatizer()
+stop_words = set(stopwords.words('russian'))
 
 xml_user = os.getenv("XML_USER")
 xml_key = os.getenv("XML_KEY")
@@ -206,6 +216,7 @@ async def process_urls(urls: list, request_id: int, database: Database):
     if page_contents:
         await database.save_page_contents(page_contents)
 
+
 async def fetch_page_content(session, url: str, request_id: int):
     try:
         async with session.get(url) as response:
@@ -220,7 +231,6 @@ async def fetch_page_content(session, url: str, request_id: int):
     except Exception as e:
         logger.error(f"Error fetching URL {url}: {e}")
         return None
-
 
 
 @app.get("/process-url/")
@@ -240,10 +250,7 @@ async def process_url(url: str = Query(...), search_string: str = Query(...), re
             filtered_urls = set(filtered_urls)
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
             await process_urls(filtered_urls, db_request.id, database)
-
-        return {"status": "success"
-                # , "data": filtered_urls
-                }
+        return {"status": "success"}
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
