@@ -7,24 +7,22 @@ from fastapi import FastAPI, Query, HTTPException
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy.sql import select
 import loguru
 import aiohttp
 import asyncio
 import xml.etree.ElementTree as ET
+from collections import Counter
+import pandas as pd
+
+# python -m spacy download ru_core_news_lg
+import spacy
+
+# Загрузка русскоязычной модели
+nlp = spacy.load("ru_core_news_lg")
 
 from dotenv import load_dotenv
 load_dotenv()
-
-import nltk
-from nltk.stem import WordNetLemmatizer
-from nltk.corpus import stopwords
-
-nltk.download('punkt')
-nltk.download('wordnet')
-nltk.download('stopwords')
-
-lemmatizer = WordNetLemmatizer()
-stop_words = set(stopwords.words('russian'))
 
 xml_user = os.getenv("XML_USER")
 xml_key = os.getenv("XML_KEY")
@@ -80,6 +78,19 @@ class Database:
                 session.add_all(page_contents)
             await session.commit()
             logger.info(f"Page contents saved: {len(page_contents)} items")
+
+    async def get_filtered_page_contents(self, request_id: int, original_url: str):
+        async with self.async_session() as session:
+            try:
+                # Формируем SQL-запрос
+                stmt = select(PageContent.content).where(PageContent.request_id == request_id, PageContent.url != original_url)
+                result = await session.execute(stmt)
+                # Получаем список текстов
+                contents = [item[0] for item in result.fetchall()]
+                return contents
+            except Exception as e:
+                loguru.logger.error(f"Error retrieving filtered page contents: {e}")
+                raise e
 
 
 class UserRequest(Base):
@@ -233,6 +244,26 @@ async def fetch_page_content(session, url: str, request_id: int):
         return None
 
 
+def lemmatize_text(text):
+    # Создаем документ с помощью модели
+    doc = nlp(text.lower())
+    # Получаем леммы для каждого токена в тексте
+    lemmas = [token.lemma_ for token in doc]
+    return lemmas
+
+async def get_median_lemmatized_word_frequency(contents):
+    word_frequencies_list = []
+
+    for content in contents:
+        lemmatized_words = lemmatize_text(content)
+        word_frequencies = Counter(lemmatized_words)
+        word_frequencies_list.append(word_frequencies)
+
+    # Создание pandas DataFrame
+    df = pd.DataFrame(word_frequencies_list)
+    df = df.fillna(0)
+    median_frequencies = df.median()  # Медиана по каждому столбцу
+
 @app.get("/process-url/")
 async def process_url(url: str = Query(...), search_string: str = Query(...), region: str = Query(...)):
     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
@@ -250,6 +281,11 @@ async def process_url(url: str = Query(...), search_string: str = Query(...), re
             filtered_urls = set(filtered_urls)
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
             await process_urls(filtered_urls, db_request.id, database)
+            # Получаем тексты из базы данных
+            contents = await database.get_filtered_page_contents(db_request.id, url)
+            # Получаем медиану частоты встречаемости лемматизированных слов
+            median_frequency = await get_median_lemmatized_word_frequency(contents)
+
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Error processing request: {e}")
