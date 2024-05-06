@@ -14,9 +14,12 @@ import asyncio
 import xml.etree.ElementTree as ET
 from collections import Counter
 import pandas as pd
+from spacy.lang.ru.stop_words import STOP_WORDS
+from string import punctuation
 
 # python -m spacy download ru_core_news_lg
 import spacy
+STOP_WORDS = STOP_WORDS
 
 # Загрузка русскоязычной модели
 nlp = spacy.load("ru_core_news_lg")
@@ -248,7 +251,7 @@ def lemmatize_text(text):
     # Создаем документ с помощью модели
     doc = nlp(text.lower())
     # Получаем леммы для каждого токена в тексте
-    lemmas = [token.lemma_ for token in doc]
+    lemmas = [token.lemma_ for token in doc if token.lemma_ not in STOP_WORDS and token.lemma_ not in punctuation]
     return lemmas
 
 async def get_median_lemmatized_word_frequency(contents):
@@ -263,6 +266,8 @@ async def get_median_lemmatized_word_frequency(contents):
     df = pd.DataFrame(word_frequencies_list)
     df = df.fillna(0)
     median_frequencies = df.median()  # Медиана по каждому столбцу
+    median_frequencies = median_frequencies.sort_values(ascending=False)
+    return median_frequencies
 
 @app.get("/process-url/")
 async def process_url(url: str = Query(...), search_string: str = Query(...), region: str = Query(...)):
