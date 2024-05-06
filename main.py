@@ -18,11 +18,13 @@ from spacy.lang.ru.stop_words import STOP_WORDS
 from string import punctuation
 
 # python -m spacy download ru_core_news_lg
+# python -m spacy download ru_core_news_md
+# python -m spacy download ru_core_news_sm
 import spacy
 STOP_WORDS = STOP_WORDS
 
 # Загрузка русскоязычной модели
-nlp = spacy.load("ru_core_news_lg")
+nlp = spacy.load("ru_core_news_md")
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -87,6 +89,19 @@ class Database:
             try:
                 # Формируем SQL-запрос
                 stmt = select(PageContent.content).where(PageContent.request_id == request_id, PageContent.url != original_url)
+                result = await session.execute(stmt)
+                # Получаем список текстов
+                contents = [item[0] for item in result.fetchall()]
+                return contents
+            except Exception as e:
+                loguru.logger.error(f"Error retrieving filtered page contents: {e}")
+                raise e
+
+    async def get_main_page_contents(self, request_id: int, original_url: str):
+        async with self.async_session() as session:
+            try:
+                # Формируем SQL-запрос
+                stmt = select(PageContent.content).where(PageContent.request_id == request_id, PageContent.url == original_url)
                 result = await session.execute(stmt)
                 # Получаем список текстов
                 contents = [item[0] for item in result.fetchall()]
@@ -290,8 +305,32 @@ async def process_url(url: str = Query(...), search_string: str = Query(...), re
             contents = await database.get_filtered_page_contents(db_request.id, url)
             # Получаем медиану частоты встречаемости лемматизированных слов
             median_frequency = await get_median_lemmatized_word_frequency(contents)
+            main_content = await database.get_main_page_contents(db_request.id, url)
+            main_frequency = await get_median_lemmatized_word_frequency(main_content)
 
-        return {"status": "success"}
+            # Добавляем имена к сериям
+            main_frequency.name = 'main_freq'
+            median_frequency.name = 'median_freq'
+
+            # Объединяем два DataFrame по индексу
+            merged_df = pd.merge(main_frequency, median_frequency, left_index=True, right_index=True, how='outer')
+
+            # Заменяем NaN на 0
+            merged_df.fillna(0, inplace=True)
+
+            # Вычисляем разность между столбцами
+            merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
+
+            lsi = merged_df[(merged_df['main_freq']==0) & (merged_df['median_freq']>0)]['diff'].to_dict()
+            increase_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']>0)]['diff'].to_dict()
+            dencrease_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']<0)]['diff'].to_dict()
+
+
+        return {"status": "success",
+                'lsi': lsi,
+                'увеличить частотность': increase_qty,
+                'уменьшить частотоность': dencrease_qty
+                }
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
