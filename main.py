@@ -266,7 +266,7 @@ def lemmatize_text(text):
     # Создаем документ с помощью модели
     doc = nlp(text.lower())
     # Получаем леммы для каждого токена в тексте
-    lemmas = [token.lemma_ for token in doc if token.lemma_ not in STOP_WORDS and token.lemma_ not in punctuation]
+    lemmas = [token.lemma_ for token in doc if token.lemma_ not in STOP_WORDS and token.lemma_ not in punctuation and len(token.lemma_)>1]
     return lemmas
 
 async def get_median_lemmatized_word_frequency(contents):

@@ -8,6 +8,4 @@ bs4
 uvicorn
 nltk
 pandas
-natasha
-navec
 spacy
