@@ -64,13 +64,12 @@ class Database:
                 loguru.logger.error(f"Error saving search results: {e}")
                 raise e
 
-    async def save_page_content(self, request_id: int, url: str, content: str):
+    async def save_page_contents(self, page_contents: list):
         async with self.async_session() as session:
             async with session.begin():
-                page_content = PageContent(request_id=request_id, url=url, content=content)
-                session.add(page_content)
+                session.add_all(page_contents)
             await session.commit()
-            logger.info(f"Page content saved: {page_content}")
+            logger.info(f"Page contents saved: {len(page_contents)} items")
 
 
 class UserRequest(Base):
@@ -173,33 +172,55 @@ def filter_urls(urls: list, stop_words: set) -> list:
 
 
 async def save_page_content(url: str, request_id: int, database: Database):
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            content = await response.text()
-            soup = BeautifulSoup(content, "html.parser")
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url) as response:
+                content = await response.text()
+                soup = BeautifulSoup(content, "html.parser")
 
-            # Удаление скриптов и стилей
-            for script_or_style in soup(["script", "style"]):
-                script_or_style.decompose()
+                # Удаление скриптов и стилей
+                for script_or_style in soup(["script", "style"]):
+                    script_or_style.decompose()
 
-            # Извлекаем чистый текст из страницы с заданным разделителем
-            page_content = soup.get_text(separator=" ")
-            if page_content:
-                page_content = re.sub(r"\s+", " ", page_content).strip()
-                try:
+                # Извлекаем чистый текст из страницы с заданным разделителем
+                page_content = soup.get_text(separator=" ")
+                if page_content:
+                    page_content = re.sub(r"\s+", " ", page_content).strip()
                     page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
                     await database.save_page_content(request_id, url, page_content)
-                except Exception as e:
-                    logger.error(e)
+    except Exception as e:
+        logger.error(e)
 
 
 async def process_urls(urls: list, request_id: int, database: Database):
-    """Асинхронно обрабатывает все URL-адреса и сохраняет их текстовое содержимое в базе данных."""
-    tasks = []
-    for url in urls:
-        task = asyncio.create_task(save_page_content(url, request_id, database))
-        tasks.append(task)
-    await asyncio.gather(*tasks)
+    page_contents = []
+    async with aiohttp.ClientSession() as session:
+        tasks = []
+        for url in urls:
+            task = asyncio.create_task(fetch_page_content(session, url, request_id))
+            tasks.append(task)
+        results = await asyncio.gather(*tasks)
+        for result in results:
+            if result:
+                page_contents.append(result)
+    if page_contents:
+        await database.save_page_contents(page_contents)
+
+async def fetch_page_content(session, url: str, request_id: int):
+    try:
+        async with session.get(url) as response:
+            content = await response.text()
+            soup = BeautifulSoup(content, "html.parser")
+            for script_or_style in soup(["script", "style"]):
+                script_or_style.decompose()
+            page_content = soup.get_text(separator=" ").strip()
+            page_content = re.sub(r"\s+", " ", page_content)
+            page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+            return PageContent(request_id=request_id, url=url, content=page_content)
+    except Exception as e:
+        logger.error(f"Error fetching URL {url}: {e}")
+        return None
+
 
 
 @app.get("/process-url/")
