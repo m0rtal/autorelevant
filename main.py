@@ -255,11 +255,22 @@ async def fetch_page_content(session, url: str):
 
 
 def lemmatize_text(text):
+    # Удаление пунктуации
+    text = re.sub(r'[' + punctuation + ']', '', text)
+    # Удаление цифр
+    text = re.sub(r'\d+', '', text)
+
     # Создаем документ с помощью модели
     doc = nlp(text.lower())
+
     # Получаем леммы для каждого токена в тексте
-    lemmas = [token.lemma_ for token in doc if token.lemma_ not in STOP_WORDS and token.lemma_ not in punctuation and len(token.lemma_)>1]
+    lemmas = [
+        token.lemma_ for token in doc
+        if token.lemma_ not in STOP_WORDS
+           and len(token.lemma_) > 1
+    ]
     return lemmas
+
 
 async def get_lemmatized_words(content):
     loop = asyncio.get_running_loop()
