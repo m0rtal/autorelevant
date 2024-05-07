@@ -3,7 +3,7 @@ import os
 import re
 
 from bs4 import BeautifulSoup
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, ForeignKey
@@ -52,11 +52,11 @@ class Database:
                 loguru.logger.error(f"Error creating tables: {e}")
                 raise e
 
-    async def save_request(self, url: str, search_string: str, region: str):
+    async def save_request(self, url: str, search_string: str, region: str, domain: str):
         async with self.async_session() as session:
             try:
                 async with session.begin():
-                    db_request = UserRequest(url=url, search_string=search_string, region=region)
+                    db_request = UserRequest(url=url, search_string=search_string, region=region, domain=domain)
                     session.add(db_request)
                 await session.commit()
                 loguru.logger.info(f"Request saved: {db_request}")
@@ -77,50 +77,19 @@ class Database:
                 loguru.logger.error(f"Error saving search results: {e}")
                 raise e
 
-    async def save_page_contents(self, page_contents: list):
-        async with self.async_session() as session:
-            async with session.begin():
-                session.add_all(page_contents)
-            await session.commit()
-            logger.info(f"Page contents saved: {len(page_contents)} items")
-
-    async def get_filtered_page_contents(self, request_id: int, original_url: str):
+    async def save_page_contents(self, request_id: int, contents: dict):
         async with self.async_session() as session:
             try:
-                # Формируем SQL-запрос
-                stmt = select(PageContent.content).where(PageContent.request_id == request_id, PageContent.url != original_url)
-                result = await session.execute(stmt)
-                # Получаем список текстов
-                contents = [item[0] for item in result.fetchall()]
-                return contents
+                async with session.begin():
+                    page_contents = [
+                        PageContent(request_id=request_id, url=url, content=content)
+                        for url, content in contents.items() if content is not None
+                    ]
+                    session.add_all(page_contents)
+                await session.commit()
+                logger.info(f"Page contents saved: {len(page_contents)} items")
             except Exception as e:
-                loguru.logger.error(f"Error retrieving filtered page contents: {e}")
-                raise e
-
-    async def get_filtered_urls(self, request_id: int, original_url: str):
-        async with self.async_session() as session:
-            try:
-                # Формируем SQL-запрос
-                stmt = select(PageContent.url).where(PageContent.request_id == request_id, PageContent.url != original_url)
-                result = await session.execute(stmt)
-                # Получаем список ссылок
-                urls = [item[0] for item in result.fetchall()]
-                return urls
-            except Exception as e:
-                loguru.logger.error(f"Error retrieving filtered page contents: {e}")
-                raise e
-
-    async def get_main_page_contents(self, request_id: int, original_url: str):
-        async with self.async_session() as session:
-            try:
-                # Формируем SQL-запрос
-                stmt = select(PageContent.content).where(PageContent.request_id == request_id, PageContent.url == original_url)
-                result = await session.execute(stmt)
-                # Получаем список текстов
-                contents = [item[0] for item in result.fetchall()]
-                return contents
-            except Exception as e:
-                loguru.logger.error(f"Error retrieving filtered page contents: {e}")
+                logger.error(f"Error saving page contents: {e}")
                 raise e
 
 
@@ -130,6 +99,7 @@ class UserRequest(Base):
     url = Column(String)
     search_string = Column(String)
     region = Column(String)
+    domain = Column(String)
 
 
 class SearchResult(Base):
@@ -205,6 +175,34 @@ async def yandex_xmlproxy_request(search_string: str, region: str, user_id: str 
             return None
 
 
+async def google_proxy_request(search_string: str, location: str, domain: str):
+    url = 'https://api.spaceserp.com/google/search'
+
+    params = {
+        'apiKey': '0d421ceb-820a-418c-a1dd-cdcb9210317c',
+        'q': search_string,
+        'location': location,
+        'domain': domain,
+        'gl': 'ru',
+        'hl': 'ru',
+        'resultFormat': 'json'
+    }
+
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.get(url, params=params) as response:
+                if response.status != 200:
+                    logger.error(f"Google SERP API request error: HTTP status code {response.status}")
+                    return None
+
+                content = await response.json()
+                logger.info(f"Google SERP API request successful. Received {len(content)} bytes.")
+                return content['organic_results']
+        except aiohttp.ClientError as e:
+            logger.error(f"Google SERP API request error: {e}")
+            return None
+
+
 def load_stop_words(file_path: str) -> set:
     """Загружает стоп-слова из указанного файла."""
     stop_words = set()
@@ -223,43 +221,21 @@ def filter_urls(urls: list, stop_words: set) -> list:
     return filtered_urls
 
 
-async def save_page_content(url: str, request_id: int, database: Database):
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url) as response:
-                content = await response.text()
-                soup = BeautifulSoup(content, "html.parser")
-
-                # Удаление скриптов и стилей
-                for script_or_style in soup(["script", "style"]):
-                    script_or_style.decompose()
-
-                # Извлекаем чистый текст из страницы с заданным разделителем
-                page_content = soup.get_text(separator=" ")
-                if page_content:
-                    page_content = re.sub(r"\s+", " ", page_content).strip()
-                    page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-                    await database.save_page_content(request_id, url, page_content)
-    except Exception as e:
-        logger.error(e)
-
-
-async def process_urls(urls: list, request_id: int, database: Database):
-    page_contents = []
+async def process_urls(urls: list):
+    page_contents = {}
     async with aiohttp.ClientSession() as session:
         tasks = []
         for url in urls:
-            task = asyncio.create_task(fetch_page_content(session, url, request_id))
+            task = asyncio.create_task(fetch_page_content(session, url))
             tasks.append(task)
         results = await asyncio.gather(*tasks)
-        for result in results:
-            if result:
-                page_contents.append(result)
-    if page_contents:
-        await database.save_page_contents(page_contents)
+        for url, content in results:
+            if content:
+                page_contents[url] = content
+    return page_contents
 
 
-async def fetch_page_content(session, url: str, request_id: int):
+async def fetch_page_content(session, url: str):
     try:
         async with session.get(url) as response:
             content = await response.text()
@@ -269,10 +245,10 @@ async def fetch_page_content(session, url: str, request_id: int):
             page_content = soup.get_text(separator=" ").strip()
             page_content = re.sub(r"\s+", " ", page_content)
             page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-            return PageContent(request_id=request_id, url=url, content=page_content)
+            return (url, page_content)  # Возвращаем кортеж (url, page_content)
     except Exception as e:
         logger.error(f"Error fetching URL {url}: {e}")
-        return None
+        return (url, None)  # Возвращаем None для контента в случае ошибки
 
 
 def lemmatize_text(text):
@@ -298,28 +274,35 @@ async def get_median_lemmatized_word_frequency(contents):
     return median_frequencies
 
 @app.get("/process-url/")
-async def process_url(url: str = Query(...), search_string: str = Query(...), region: str = Query(...)):
+async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), search_string: str = Query(...), region: str = Query(...)):
     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
     try:
         database = Database(DATABASE_URL)
-        db_request = await database.save_request(url, search_string, region)
+        db_request = await database.save_request(url, search_string, region, '')
         search_results = await yandex_xmlproxy_request(search_string=search_string, region=region)
         if search_results is not None:
-            await database.save_search_results(db_request.id, search_results)
+            # Планируем сохранение результатов поиска в фоне
+            background_tasks.add_task(database.save_search_results, db_request.id, search_results)
+
             # Загружаем стоп-слова из файла
             stop_words = load_stop_words("stop_words.txt")
+
             # Фильтруем URL-адреса по стоп-словам
             filtered_urls = filter_urls(search_results, stop_words)
             filtered_urls.append(url)
             filtered_urls = set(filtered_urls)
+
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
-            await process_urls(filtered_urls, db_request.id, database)
-            # Получаем тексты из базы данных
-            contents = await database.get_filtered_page_contents(db_request.id, url)
+            contents = await process_urls(filtered_urls)
+            # Планируем сохранение результатов поиска в фоне
+            background_tasks.add_task(database.save_page_contents, db_request.id, contents)
+
+            main_content = contents.get(url)
+            other_contents = [content for page_url, content in contents.items() if page_url != url]
+
             # Получаем медиану частоты встречаемости лемматизированных слов
-            median_frequency = await get_median_lemmatized_word_frequency(contents)
-            main_content = await database.get_main_page_contents(db_request.id, url)
-            main_frequency = await get_median_lemmatized_word_frequency(main_content)
+            median_frequency = await get_median_lemmatized_word_frequency(other_contents)
+            main_frequency = await get_median_lemmatized_word_frequency([main_content])
 
             # Добавляем имена к сериям
             main_frequency.name = 'main_freq'
@@ -334,23 +317,33 @@ async def process_url(url: str = Query(...), search_string: str = Query(...), re
             # Вычисляем разность между столбцами
             merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
 
-            lsi = merged_df[(merged_df['main_freq']==0) & (merged_df['median_freq']>0)]['diff'].to_dict()
+            lsi = merged_df[(merged_df['main_freq']==0) & (merged_df['median_freq']>0)]['median_freq'].to_dict()
             increase_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']>0)]['diff'].to_dict()
             dencrease_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']<0)]['diff'].to_dict()
 
-            # Получаем спаршенные ссылки
-            parsed_links = await database.get_filtered_urls(db_request.id, url)
 
         return {"status": "success",
                 'lsi': lsi,
                 'увеличить частотность': increase_qty,
                 'уменьшить частотоность': dencrease_qty,
-                'спаршенные ссылки': parsed_links
+                'обработанные ссылки': [page_url for page_url in filtered_urls if page_url != url]
                 }
 
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+# @app.get("/search-google/")
+# async def search_google(url: str = Query(...), search_string: str = Query(...), location: str = Query(...), domain: str = Query(...)):
+#     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
+#     try:
+#         database = Database(DATABASE_URL)
+#         db_request = await database.save_request(url, search_string, location, domain)
+#
+#     except Exception as e:
+#         logger.error(f"Error processing request: {e}")
+#         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 
 if __name__ == "__main__":
