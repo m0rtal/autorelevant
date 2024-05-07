@@ -315,7 +315,9 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
     try:
         database = Database(DATABASE_URL)
         db_request = await database.save_request(url, search_string, region, '')
+        logger.info('Request is processed and saved')
         search_results = await yandex_xmlproxy_request(search_string=search_string, region=region)
+        logger.info('Yandex response is gotten')
         if search_results is not None:
             # Планируем сохранение результатов поиска в фоне
             background_tasks.add_task(database.save_search_results, db_request.id, search_results)
@@ -327,9 +329,10 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             filtered_urls = filter_urls(search_results, stop_words)[:30]
             filtered_urls.append(url)
             filtered_urls = set(filtered_urls)
-
+            logger.info('Urls are filtered')
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
             contents = await process_urls(filtered_urls)
+            logger.info('Urls are processed')
             # Планируем сохранение результатов поиска в фоне
             background_tasks.add_task(database.save_page_contents, db_request.id, contents)
 
@@ -339,20 +342,20 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             # Получаем медиану частоты встречаемости лемматизированных слов
             median_frequency = await get_median_lemmatized_word_frequency(other_contents)
             main_frequency = await get_median_lemmatized_word_frequency([main_content])
-
+            logger.info('Frequencies of lemmas are calculated')
             # Добавляем имена к сериям
             main_frequency.name = 'main_freq'
             median_frequency.name = 'median_freq'
 
             # Объединяем два DataFrame по индексу
             merged_df = pd.merge(main_frequency, median_frequency, left_index=True, right_index=True, how='outer')
-
+            logger.info('main frequency and median frequency are merged')
             # Заменяем NaN на 0
             merged_df.fillna(0, inplace=True)
 
             # Вычисляем разность между столбцами
             merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
-
+            logger.info('')
             lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 10)]['median_freq']
             increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] >= 10)]['diff']
             decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
