@@ -16,6 +16,9 @@ from collections import Counter
 import pandas as pd
 from spacy.lang.ru.stop_words import STOP_WORDS
 from string import punctuation
+from concurrent.futures import ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=4)
+
 
 # python -m spacy download ru_core_news_lg
 # python -m spacy download ru_core_news_md
@@ -258,13 +261,16 @@ def lemmatize_text(text):
     lemmas = [token.lemma_ for token in doc if token.lemma_ not in STOP_WORDS and token.lemma_ not in punctuation and len(token.lemma_)>1]
     return lemmas
 
-async def get_median_lemmatized_word_frequency(contents):
-    word_frequencies_list = []
+async def get_lemmatized_words(content):
+    loop = asyncio.get_running_loop()
+    lemmatized_words = await loop.run_in_executor(executor, lemmatize_text, content)
+    return lemmatized_words
 
-    for content in contents:
-        lemmatized_words = lemmatize_text(content)
-        word_frequencies = Counter(lemmatized_words)
-        word_frequencies_list.append(word_frequencies)
+async def get_median_lemmatized_word_frequency(contents):
+    tasks = [asyncio.create_task(get_lemmatized_words(content)) for content in contents]
+    results = await asyncio.gather(*tasks)
+
+    word_frequencies_list = [Counter(result) for result in results]
 
     # Создание pandas DataFrame
     df = pd.DataFrame(word_frequencies_list)
