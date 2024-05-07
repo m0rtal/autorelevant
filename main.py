@@ -97,6 +97,19 @@ class Database:
                 loguru.logger.error(f"Error retrieving filtered page contents: {e}")
                 raise e
 
+    async def get_filtered_urls(self, request_id: int, original_url: str):
+        async with self.async_session() as session:
+            try:
+                # Формируем SQL-запрос
+                stmt = select(PageContent.url).where(PageContent.request_id == request_id, PageContent.url != original_url)
+                result = await session.execute(stmt)
+                # Получаем список ссылок
+                urls = [item[0] for item in result.fetchall()]
+                return urls
+            except Exception as e:
+                loguru.logger.error(f"Error retrieving filtered page contents: {e}")
+                raise e
+
     async def get_main_page_contents(self, request_id: int, original_url: str):
         async with self.async_session() as session:
             try:
@@ -325,12 +338,16 @@ async def process_url(url: str = Query(...), search_string: str = Query(...), re
             increase_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']>0)]['diff'].to_dict()
             dencrease_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']<0)]['diff'].to_dict()
 
+            # Получаем спаршенные ссылки
+            parsed_links = await database.get_filtered_urls(db_request.id, url)
 
         return {"status": "success",
                 'lsi': lsi,
                 'увеличить частотность': increase_qty,
-                'уменьшить частотоность': dencrease_qty
+                'уменьшить частотоность': dencrease_qty,
+                'спаршенные ссылки': parsed_links
                 }
+
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
