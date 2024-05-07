@@ -334,15 +334,15 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             # Вычисляем разность между столбцами
             merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
 
-            lsi = merged_df[(merged_df['main_freq']==0) & (merged_df['median_freq']>0)]['median_freq'].to_dict()
-            increase_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']>0)]['diff'].to_dict()
-            dencrease_qty = merged_df[(merged_df['main_freq']>0) & (merged_df['diff']<0)]['diff'].to_dict()
+            lsi = merged_df[(merged_df['main_freq']==0) & (merged_df['median_freq']>10)]['median_freq']
+            increase_qty = merged_df[(merged_df['main_freq']>10) & (merged_df['diff']>10)]['diff']
+            dencrease_qty = merged_df[(merged_df['main_freq']>10) & (merged_df['diff']<10)]['diff']
 
 
         return {"status": "success",
-                'lsi': lsi,
-                'увеличить частотность': increase_qty,
-                'уменьшить частотоность': dencrease_qty,
+                'lsi': lsi.to_dict() if not lsi.isempty() else None,
+                'увеличить частотность':increase_qty.to_dict() if not increase_qty.isempty() else None,
+                'уменьшить частотоность': dencrease_qty.to_dict() if not dencrease_qty.isempty() else None,
                 'обработанные ссылки': [page_url for page_url in filtered_urls if page_url != url]
                 }
 
