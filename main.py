@@ -7,7 +7,8 @@ from fastapi import FastAPI, Query, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy.sql import select
+import ssl
+from aiohttp import TCPConnector
 import loguru
 import aiohttp
 import asyncio
@@ -17,19 +18,21 @@ import pandas as pd
 from spacy.lang.ru.stop_words import STOP_WORDS
 from string import punctuation
 from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=4)
 
+executor = ThreadPoolExecutor(max_workers=4)
 
 # python -m spacy download ru_core_news_lg
 # python -m spacy download ru_core_news_md
 # python -m spacy download ru_core_news_sm
 import spacy
+
 STOP_WORDS = STOP_WORDS
 
 # Загрузка русскоязычной модели
 nlp = spacy.load("ru_core_news_md")
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 xml_user = os.getenv("XML_USER")
@@ -240,15 +243,28 @@ async def process_urls(urls: list):
 
 async def fetch_page_content(session, url: str):
     try:
-        async with session.get(url) as response:
-            content = await response.text()
-            soup = BeautifulSoup(content, "html.parser")
-            for script_or_style in soup(["script", "style"]):
-                script_or_style.decompose()
-            page_content = soup.get_text(separator=" ").strip()
-            page_content = re.sub(r"\s+", " ", page_content)
-            page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-            return (url, page_content)  # Возвращаем кортеж (url, page_content)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        # Создание SSL контекста, который не проверяет сертификат
+        ssl_context = ssl.create_default_context()
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
+
+        # Использование кастомного TCPConnector с модифицированным SSL контекстом
+        async with session.get(url, ssl=ssl_context, headers=headers) as response:
+            if response.status == 200:  # Проверка статуса HTTP ответа
+                content = await response.text()
+                soup = BeautifulSoup(content, "html.parser")
+                for script_or_style in soup(["script", "style"]):
+                    script_or_style.decompose()
+                page_content = soup.get_text(separator=" ").strip()
+                page_content = re.sub(r"\s+", " ", page_content)
+                page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+                return (url, page_content)  # Возвращаем кортеж (url, page_content)
+            else:
+                logger.warning(f"HTTP status code {response.status} for URL {url}")
+                return (url, None)  # Возвращаем None, если статус не 200
     except Exception as e:
         logger.error(f"Error fetching URL {url}: {e}")
         return (url, None)  # Возвращаем None для контента в случае ошибки
@@ -277,6 +293,7 @@ async def get_lemmatized_words(content):
     lemmatized_words = await loop.run_in_executor(executor, lemmatize_text, content)
     return lemmatized_words
 
+
 async def get_median_lemmatized_word_frequency(contents):
     tasks = [asyncio.create_task(get_lemmatized_words(content)) for content in contents]
     results = await asyncio.gather(*tasks)
@@ -290,8 +307,10 @@ async def get_median_lemmatized_word_frequency(contents):
     median_frequencies = median_frequencies.sort_values(ascending=False)
     return median_frequencies
 
+
 @app.get("/process-url/")
-async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), search_string: str = Query(...), region: str = Query(...)):
+async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), search_string: str = Query(...),
+                      region: str = Query(...)):
     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
     try:
         database = Database(DATABASE_URL)
@@ -305,7 +324,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             stop_words = load_stop_words("stop_words.txt")
 
             # Фильтруем URL-адреса по стоп-словам
-            filtered_urls = filter_urls(search_results, stop_words)
+            filtered_urls = filter_urls(search_results, stop_words)[:30]
             filtered_urls.append(url)
             filtered_urls = set(filtered_urls)
 
@@ -334,21 +353,21 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             # Вычисляем разность между столбцами
             merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
 
-            lsi = merged_df[(merged_df['main_freq']==0) & (merged_df['median_freq']>10)]['median_freq']
-            increase_qty = merged_df[(merged_df['main_freq']>10) & (merged_df['diff']>10)]['diff']
-            dencrease_qty = merged_df[(merged_df['main_freq']>10) & (merged_df['diff']<10)]['diff']
-
+            lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 10)]['median_freq']
+            increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] >= 10)]['diff']
+            decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
 
         return {"status": "success",
-                'lsi': lsi.to_dict() if not lsi.isempty() else None,
-                'увеличить частотность':increase_qty.to_dict() if not increase_qty.isempty() else None,
-                'уменьшить частотоность': dencrease_qty.to_dict() if not dencrease_qty.isempty() else None,
+                'lsi': lsi.to_dict() if not lsi.empty else "",
+                'увеличить частотность': increase_qty.to_dict() if not increase_qty.empty else "",
+                'уменьшить частотоность': decrease_qty.to_dict() if not decrease_qty.empty else "",
                 'обработанные ссылки': [page_url for page_url in filtered_urls if page_url != url]
                 }
 
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
 
 # @app.get("/search-google/")
 # async def search_google(url: str = Query(...), search_string: str = Query(...), location: str = Query(...), domain: str = Query(...)):
@@ -360,7 +379,6 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
 #     except Exception as e:
 #         logger.error(f"Error processing request: {e}")
 #         raise HTTPException(status_code=500, detail="Internal server error")
-
 
 
 if __name__ == "__main__":
