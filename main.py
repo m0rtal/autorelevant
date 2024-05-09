@@ -23,6 +23,7 @@ from nltk.corpus import stopwords
 nltk.download('stopwords')
 russian_stop_words = set(stopwords.words('russian'))
 
+
 def read_cities_from_file(filename):
     try:
         with open(filename, 'r', encoding='utf-8') as file:
@@ -32,9 +33,9 @@ def read_cities_from_file(filename):
         print(f"Файл {filename} не найден.")
         return []
 
+
 cities = read_cities_from_file("cities.txt")
 russian_stop_words.update(cities)
-
 
 from joblib import Parallel, delayed
 
@@ -263,7 +264,6 @@ async def fetch_page_content(session, url: str):
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
 
-
         async with session.get(url, ssl=ssl_context, headers=headers) as response:
             if response.status == 200:
                 content = await response.text()
@@ -288,7 +288,6 @@ async def fetch_page_content(session, url: str):
         return (url, None)
 
 
-
 def lemmatize_text(text):
     # Удаление лишнего
     text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
@@ -298,7 +297,7 @@ def lemmatize_text(text):
     lemmas = mystem.lemmatize(text.lower())
 
     # Получаем леммы для каждого токена в тексте, исключая стоп-слова
-    lemmas = [lemma for lemma in lemmas if lemma not in russian_stop_words and lemma.strip() and len(lemma)>1]
+    lemmas = [lemma for lemma in lemmas if lemma not in russian_stop_words and lemma.strip() and len(lemma) > 2]
     return lemmas
 
 
@@ -381,9 +380,9 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             logger.info('Обработка запроса завершена успешно')
 
         return {"status": "success",
-                'lsi': lsi.to_dict() if not lsi.empty else "",
-                'увеличить частотность': increase_qty.to_dict() if not increase_qty.empty else "",
-                'уменьшить частотность': decrease_qty.to_dict() if not decrease_qty.empty else "",
+                'lsi': [f"{key}: {value}" for key, value in lsi.items()] if not lsi.empty else [],
+                'увеличить частотность': [f"{key}: {value}" for key, value in increase_qty.items()] if not increase_qty.empty else [],
+                'уменьшить частотность': [f"{key}: {value}" for key, value in decrease_qty.items()] if not decrease_qty.empty else [],
                 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                 }
 
