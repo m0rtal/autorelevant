@@ -236,6 +236,7 @@ async def process_urls(urls: list):
         for url, content in results:
             if content:
                 page_contents[url] = content
+                logger.info(f'Content from {url} is saved')
     return page_contents
 
 
