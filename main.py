@@ -271,8 +271,8 @@ async def fetch_page_content(session, url: str):
 
 
 def lemmatize_text(text):
-    # Удаление пунктуации
-    text = re.sub(r'[' + punctuation + ']', '', text)
+    # Удаление лишнего
+    text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
     # Удаление цифр
     text = re.sub(r'\d+', '', text)
 
