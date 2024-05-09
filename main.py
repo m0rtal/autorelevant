@@ -321,10 +321,11 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             # Фильтруем URL-адреса по стоп-словам
             filtered_urls = filter_urls(search_results, stop_words)[:30]
             filtered_urls.append(url)
-            filtered_urls = set(filtered_urls)
+            filtered_urls = sorted(set(filtered_urls), key=filtered_urls.index)
             logger.info('Urls are filtered')
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
             contents = await process_urls(filtered_urls)
+            filtered_urls = dict(enumerate(filtered_urls, start=1))
             logger.info('Urls are processed')
             # Планируем сохранение результатов поиска в фоне
             background_tasks.add_task(database.save_page_contents, db_request.id, contents)
@@ -357,7 +358,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                 'lsi': lsi.to_dict() if not lsi.empty else "",
                 'увеличить частотность': increase_qty.to_dict() if not increase_qty.empty else "",
                 'уменьшить частотность': decrease_qty.to_dict() if not decrease_qty.empty else "",
-                'обработанные ссылки': [page_url for page_url in filtered_urls if page_url != url]
+                'обработанные ссылки': {i:page_url for i, page_url in filtered_urls.items() if page_url != url}
                 }
 
     except Exception as e:
