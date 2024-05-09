@@ -15,13 +15,26 @@ import asyncio
 import xml.etree.ElementTree as ET
 from collections import Counter
 import pandas as pd
-from string import punctuation
+from numpy import ceil
 
 import nltk
 from nltk.corpus import stopwords
 
 nltk.download('stopwords')
 russian_stop_words = set(stopwords.words('russian'))
+
+def read_cities_from_file(filename):
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            cities = [city.strip().lower() for city in file.readlines()]
+            return cities
+    except FileNotFoundError:
+        print(f"Файл {filename} не найден.")
+        return []
+
+cities = read_cities_from_file("cities.txt")
+russian_stop_words.update(cities)
+
 
 from joblib import Parallel, delayed
 
@@ -227,7 +240,7 @@ def filter_urls(urls: list, stop_words: set) -> list:
 
 async def process_urls(urls: list):
     page_contents = {}
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
         tasks = []
         for url in urls:
             task = asyncio.create_task(fetch_page_content(session, url))
@@ -236,23 +249,23 @@ async def process_urls(urls: list):
         for url, content in results:
             if content:
                 page_contents[url] = content
-                logger.info(f'Content from {url} is saved')
     return page_contents
 
 
 async def fetch_page_content(session, url: str):
+    logger.info(f"Обрабатываем страницу {url}...")
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
         }
-        # Создание SSL контекста, который не проверяет сертификат
+
         ssl_context = ssl.create_default_context()
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
 
-        # Использование кастомного TCPConnector с модифицированным SSL контекстом
+
         async with session.get(url, ssl=ssl_context, headers=headers) as response:
-            if response.status == 200:  # Проверка статуса HTTP ответа
+            if response.status == 200:
                 content = await response.text()
                 soup = BeautifulSoup(content, "html.parser")
                 for script_or_style in soup(["script", "style"]):
@@ -260,25 +273,32 @@ async def fetch_page_content(session, url: str):
                 page_content = soup.get_text(separator=" ").strip()
                 page_content = re.sub(r"\s+", " ", page_content)
                 page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
-                return (url, page_content)  # Возвращаем кортеж (url, page_content)
+                logger.info(f"Обработка страницы {url} завершена успешно")
+                return (url, page_content)
             else:
                 logger.warning(f"HTTP status code {response.status} for URL {url}")
-                return (url, None)  # Возвращаем None, если статус не 200
+                return (url, None)
+    except asyncio.TimeoutError:
+        logger.error(f"Timeout error fetching URL {url}")
+        with open("timeout_urls.txt", "a") as f:
+            f.write(url + "\n")
+        return (url, None)
     except Exception as e:
         logger.error(f"Error fetching URL {url}: {e}")
-        return (url, None)  # Возвращаем None для контента в случае ошибки
+        return (url, None)
+
 
 
 def lemmatize_text(text):
-    # Удаление пунктуации
-    text = re.sub(r'[' + punctuation + ']', '', text)
+    # Удаление лишнего
+    text = re.sub(r"[^а-яА-ЯёЁa-zA-Z]+", " ", text)
     # Удаление цифр
     text = re.sub(r'\d+', '', text)
 
     lemmas = mystem.lemmatize(text.lower())
 
     # Получаем леммы для каждого токена в тексте, исключая стоп-слова
-    lemmas = [lemma for lemma in lemmas if lemma not in russian_stop_words and lemma.strip()]
+    lemmas = [lemma for lemma in lemmas if lemma not in russian_stop_words and lemma.strip() and len(lemma)>1]
     return lemmas
 
 
@@ -322,8 +342,8 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             search_results = dict(enumerate(search_results, start=1))
             filtered_urls = filter_urls(list(search_results.values()), stop_words)[:30]
             filtered_urls = set(filtered_urls)
-            filtered_urls = {i:page_url for i, page_url in search_results.items() if page_url in filtered_urls}
-            filtered_urls[0] = url # не получится обозначить его оригинальным урлом, поэтому присвою просто 0
+            filtered_urls = {i: page_url for i, page_url in search_results.items() if page_url in filtered_urls}
+            filtered_urls[0] = url  # не получится обозначить его оригинальным урлом, поэтому присвою просто 0
 
             logger.info('Urls are filtered')
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
@@ -351,16 +371,20 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
 
             # Вычисляем разность между столбцами
             merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
-            logger.info('')
-            lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 10)]['median_freq']
+            merged_df = merged_df.apply(ceil).astype(int)
+            lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 1)]['median_freq']
+            lsi = lsi.sort_values(ascending=False)
             increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] >= 10)]['diff']
+            increase_qty = increase_qty.sort_values(ascending=False)
             decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
+            decrease_qty = decrease_qty.sort_values(ascending=True)
+            logger.info('Обработка запроса завершена успешно')
 
         return {"status": "success",
                 'lsi': lsi.to_dict() if not lsi.empty else "",
                 'увеличить частотность': increase_qty.to_dict() if not increase_qty.empty else "",
                 'уменьшить частотность': decrease_qty.to_dict() if not decrease_qty.empty else "",
-                'обработанные ссылки': {i:page_url for i, page_url in filtered_urls.items() if page_url != url}
+                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                 }
 
     except Exception as e:
