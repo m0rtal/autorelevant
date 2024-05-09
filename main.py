@@ -15,21 +15,19 @@ import asyncio
 import xml.etree.ElementTree as ET
 from collections import Counter
 import pandas as pd
-from spacy.lang.ru.stop_words import STOP_WORDS
 from string import punctuation
-from concurrent.futures import ThreadPoolExecutor
 
-executor = ThreadPoolExecutor(max_workers=4)
+import nltk
+from nltk.corpus import stopwords
 
-# python -m spacy download ru_core_news_lg
-# python -m spacy download ru_core_news_md
-# python -m spacy download ru_core_news_sm
-import spacy
+nltk.download('stopwords')
+russian_stop_words = set(stopwords.words('russian'))
 
-STOP_WORDS = STOP_WORDS
+from joblib import Parallel, delayed
 
-# Загрузка русскоязычной модели
-nlp = spacy.load("ru_core_news_md")
+from pymystem3 import Mystem
+
+mystem = Mystem()
 
 from dotenv import load_dotenv
 
@@ -276,34 +274,28 @@ def lemmatize_text(text):
     # Удаление цифр
     text = re.sub(r'\d+', '', text)
 
-    # Создаем документ с помощью модели
-    doc = nlp(text.lower())
+    lemmas = mystem.lemmatize(text.lower())
 
-    # Получаем леммы для каждого токена в тексте
-    lemmas = [
-        token.lemma_ for token in doc
-        if token.lemma_ not in STOP_WORDS
-           and len(token.lemma_) > 1
-    ]
+    # Получаем леммы для каждого токена в тексте, исключая стоп-слова
+    lemmas = [lemma for lemma in lemmas if lemma not in russian_stop_words and lemma.strip()]
     return lemmas
 
 
-async def get_lemmatized_words(content):
-    loop = asyncio.get_running_loop()
-    lemmatized_words = await loop.run_in_executor(executor, lemmatize_text, content)
+def get_lemmatized_words(contents):
+    # Использование Parallel и delayed из joblib для параллельной обработки
+    lemmatized_words = Parallel(n_jobs=-1)(delayed(lemmatize_text)(content) for content in contents)
     return lemmatized_words
 
 
 async def get_median_lemmatized_word_frequency(contents):
-    tasks = [asyncio.create_task(get_lemmatized_words(content)) for content in contents]
-    results = await asyncio.gather(*tasks)
+    # Синхронный вызов асинхронной функции
+    loop = asyncio.get_running_loop()
+    results = await loop.run_in_executor(None, get_lemmatized_words, contents)
 
     word_frequencies_list = [Counter(result) for result in results]
-
-    # Создание pandas DataFrame
     df = pd.DataFrame(word_frequencies_list)
     df = df.fillna(0)
-    median_frequencies = df.median()  # Медиана по каждому столбцу
+    median_frequencies = df.median()
     median_frequencies = median_frequencies.sort_values(ascending=False)
     return median_frequencies
 
@@ -363,7 +355,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
         return {"status": "success",
                 'lsi': lsi.to_dict() if not lsi.empty else "",
                 'увеличить частотность': increase_qty.to_dict() if not increase_qty.empty else "",
-                'уменьшить частотоность': decrease_qty.to_dict() if not decrease_qty.empty else "",
+                'уменьшить частотность': decrease_qty.to_dict() if not decrease_qty.empty else "",
                 'обработанные ссылки': [page_url for page_url in filtered_urls if page_url != url]
                 }
 

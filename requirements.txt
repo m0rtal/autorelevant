@@ -8,4 +8,4 @@ bs4
 uvicorn
 nltk
 pandas
-spacy
+pymystem3
