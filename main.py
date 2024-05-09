@@ -327,7 +327,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
 
             logger.info('Urls are filtered')
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
-            contents = await process_urls(list(filtered_urls.values()))
+            contents = await process_urls(filtered_urls.values())
             logger.info('Urls are processed')
             # Планируем сохранение результатов поиска в фоне
             background_tasks.add_task(database.save_page_contents, db_request.id, contents)
