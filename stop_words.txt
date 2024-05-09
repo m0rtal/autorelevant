@@ -27,3 +27,4 @@ kupiprodai
 speedtest
 youla
 vseinstrumenti
+2gis

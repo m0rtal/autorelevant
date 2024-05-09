@@ -227,7 +227,7 @@ def filter_urls(urls: list, stop_words: set) -> list:
 
 async def process_urls(urls: list):
     page_contents = {}
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
         tasks = []
         for url in urls:
             task = asyncio.create_task(fetch_page_content(session, url))
@@ -236,11 +236,11 @@ async def process_urls(urls: list):
         for url, content in results:
             if content:
                 page_contents[url] = content
-                logger.info(f'Content from {url} is saved')
     return page_contents
 
 
 async def fetch_page_content(session, url: str):
+    logger.info(f"Обрабатываем страницу {url}...")
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -260,6 +260,7 @@ async def fetch_page_content(session, url: str):
                 page_content = soup.get_text(separator=" ").strip()
                 page_content = re.sub(r"\s+", " ", page_content)
                 page_content = page_content.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+                logger.info(f"Обработка страницы {url} завершена успешно")
                 return (url, page_content)  # Возвращаем кортеж (url, page_content)
             else:
                 logger.warning(f"HTTP status code {response.status} for URL {url}")
@@ -348,10 +349,11 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
 
             # Вычисляем разность между столбцами
             merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
-            logger.info('')
-            lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 10)]['median_freq']
+            lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 1)]['median_freq']
             increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] >= 10)]['diff']
             decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
+            logger.info('Обработка запроса завершена успешно')
+
 
         return {"status": "success",
                 'lsi': lsi.to_dict() if not lsi.empty else "",
