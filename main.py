@@ -319,13 +319,15 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             stop_words = load_stop_words("stop_words.txt")
 
             # Фильтруем URL-адреса по стоп-словам
-            filtered_urls = filter_urls(search_results, stop_words)[:30]
-            filtered_urls.append(url)
-            filtered_urls = sorted(set(filtered_urls), key=filtered_urls.index)
+            search_results = dict(enumerate(search_results, start=1))
+            filtered_urls = filter_urls(list(search_results.values()), stop_words)[:30]
+            filtered_urls = set(filtered_urls)
+            filtered_urls = {i:page_url for i, page_url in search_results.items() if page_url in filtered_urls}
+            filtered_urls[0] = url # не получится обозначить его оригинальным урлом, поэтому присвою просто 0
+
             logger.info('Urls are filtered')
             # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
-            contents = await process_urls(filtered_urls)
-            filtered_urls = dict(enumerate(filtered_urls, start=1))
+            contents = await process_urls(list(filtered_urls.values()))
             logger.info('Urls are processed')
             # Планируем сохранение результатов поиска в фоне
             background_tasks.add_task(database.save_page_contents, db_request.id, contents)
