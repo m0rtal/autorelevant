@@ -380,7 +380,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
             logger.info('Обработка запроса завершена успешно')
 
         return {"status": "success",
-                'lsi': [f"{key}: {value}" for key, value in lsi.items()] if not lsi.empty else [],
+                'lsi': [f"{key}" for key in lsi.keys()] if not lsi.empty else [],
                 'увеличить частотность': [f"{key}: {value}" for key, value in increase_qty.items()] if not increase_qty.empty else [],
                 'уменьшить частотность': [f"{key}: {value}" for key, value in decrease_qty.items()] if not decrease_qty.empty else [],
                 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
