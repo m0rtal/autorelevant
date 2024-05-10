@@ -9,3 +9,4 @@ uvicorn
 nltk
 pandas
 pymystem3
+tldextract

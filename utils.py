@@ -3,6 +3,7 @@ import re
 import ssl
 from collections import Counter
 from xml.etree import ElementTree as ET
+import tldextract
 
 import aiohttp
 import pandas as pd
@@ -11,11 +12,8 @@ from joblib import Parallel, delayed
 from numpy import ceil
 
 from logger import logger
-from config import xml_user, xml_key, google_api_key
+from config import xml_user, xml_key, google_api_key, russian_stop_words
 
-import nltk
-from nltk.corpus import stopwords
-nltk.download('stopwords')
 
 from pymystem3 import Mystem
 mystem = Mystem()
@@ -111,7 +109,8 @@ async def google_proxy_request(search_string: str, location: str, domain: str):
         'gl': 'ru',
         'hl': 'ru',
         'resultFormat': 'json',
-        'pageSize': 100
+        'pageSize': 100,
+        'device': 'desktop'
     }
 
     async with aiohttp.ClientSession() as session:
@@ -127,7 +126,33 @@ async def google_proxy_request(search_string: str, location: str, domain: str):
                 return result
         except aiohttp.ClientError as e:
             logger.error(f"Google SERP API request error: {e}")
-            return None
+            url = 'https://xmlstock.com/google/json/'
+            lr = pd.read_csv('https://xmlstock.com/geotargets-google.csv')
+            lr_value = int(lr[lr['Canonical Name']==location]['Criteria ID'].values[0])
+            params = {
+                'user': xml_user,
+                'key': xml_key,
+                'query': search_string,
+                'lr': lr_value,
+                'domain': tldextract.extract(domain).suffix,
+                'hl': 'ru',
+                'groupby': 100,
+                'device': 'desktop'
+            }
+
+            try:
+                async with session.get(url, params=params) as response:
+                    if response.status != 200:
+                        logger.error(f"Google XMLProxy request error: HTTP status code {response.status}")
+                        return None
+
+                    content = await response.json()
+                    result = dict(enumerate([result.get('url') for result in content.get('results').values()], start=1))
+                    logger.info(f"Google XMLProxy request successful. Responce: {result}")
+                    return result
+            except aiohttp.ClientError as e:
+                logger.error(f"Google XMLProxy request error: {e}")
+                return None
 
 
 def load_stop_words(file_path: str) -> set:
@@ -229,15 +254,3 @@ async def get_median_lemmatized_word_frequency(contents):
     return median_frequencies
 
 
-def read_cities_from_file(filename):
-    try:
-        with open(filename, 'r', encoding='utf-8') as file:
-            cities = [city.strip().lower() for city in file.readlines()]
-            return cities
-    except FileNotFoundError:
-        print(f"Файл {filename} не найден.")
-        return []
-
-russian_stop_words = set(stopwords.words('russian'))
-cities = read_cities_from_file("cities.txt")
-russian_stop_words.update(cities)
