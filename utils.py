@@ -8,6 +8,7 @@ import aiohttp
 import pandas as pd
 import tldextract
 from bs4 import BeautifulSoup
+from fake_useragent import UserAgent
 from joblib import Parallel, delayed
 from numpy import ceil
 from pymystem3 import Mystem
@@ -190,8 +191,9 @@ async def process_urls(urls: list):
 async def fetch_page_content(session, url: str):
     logger.info(f"Обрабатываем страницу {url}...")
     try:
+        ua = UserAgent()
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': ua.random
         }
 
         ssl_context = ssl.create_default_context()

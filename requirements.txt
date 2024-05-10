@@ -9,4 +9,5 @@ uvicorn
 nltk
 pandas
 pymystem3
+fake_useragent
 tldextract
