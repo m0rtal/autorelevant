@@ -3,20 +3,20 @@ import re
 import ssl
 from collections import Counter
 from xml.etree import ElementTree as ET
-import tldextract
 
 import aiohttp
 import pandas as pd
+import tldextract
 from bs4 import BeautifulSoup
 from joblib import Parallel, delayed
 from numpy import ceil
-
-from logger import logger
-from config import xml_user, xml_key, google_api_key, russian_stop_words
-
-
 from pymystem3 import Mystem
+
+from config import xml_user, xml_key, google_api_key, russian_stop_words
+from logger import logger
+
 mystem = Mystem()
+
 
 async def process_search_results(background_tasks, database, db_request, search_results, url):
     # Планируем сохранение результатов поиска в фоне
@@ -128,7 +128,7 @@ async def google_proxy_request(search_string: str, location: str, domain: str):
             logger.error(f"Google SERP API request error: {e}")
             url = 'https://xmlstock.com/google/json/'
             lr = pd.read_csv('https://xmlstock.com/geotargets-google.csv')
-            lr_value = int(lr[lr['Canonical Name']==location]['Criteria ID'].values[0])
+            lr_value = int(lr[lr['Canonical Name'] == location]['Criteria ID'].values[0])
             params = {
                 'user': xml_user,
                 'key': xml_key,
@@ -252,5 +252,3 @@ async def get_median_lemmatized_word_frequency(contents):
     median_frequencies = df.median()
     median_frequencies = median_frequencies.sort_values(ascending=False)
     return median_frequencies
-
-
