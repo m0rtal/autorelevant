@@ -1,7 +1,9 @@
 from logger import logger
+from datetime import datetime
+
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
 
 Base = declarative_base()
 
@@ -19,6 +21,7 @@ class SearchResult(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
     url = Column(String, nullable=False)
+    requested_at = Column(DateTime(), default=datetime.now)
 
 
 class PageContent(Base):
