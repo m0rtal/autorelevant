@@ -52,9 +52,9 @@ async def process_search_results(background_tasks, database, db_request, search_
     # Вычисляем разность между столбцами
     merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
     merged_df = merged_df.apply(ceil).astype(int)
-    lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] >= 1)]['median_freq']
+    lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] > 0)]['median_freq']
     lsi = lsi.sort_values(ascending=False)
-    increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] >= 10)]['diff']
+    increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] > 0)]['diff']
     increase_qty = increase_qty.sort_values(ascending=False)
     decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
     decrease_qty = decrease_qty.sort_values(ascending=True)
