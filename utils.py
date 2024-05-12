@@ -8,6 +8,7 @@ import aiohttp
 import pandas as pd
 import tldextract
 from bs4 import BeautifulSoup
+from fake_useragent import UserAgent
 from joblib import Parallel, delayed
 from numpy import ceil
 from pymystem3 import Mystem
@@ -30,7 +31,7 @@ async def process_search_results(background_tasks, database, db_request, search_
     filtered_urls[0] = url
     logger.info('Urls are filtered')
     # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
-    contents = await process_urls(filtered_urls.values())
+    contents = await process_urls(filtered_urls)
     logger.info('Urls are processed')
     # Планируем сохранение результатов поиска в фоне
     background_tasks.add_task(database.save_page_contents, db_request.id, contents)
@@ -148,7 +149,7 @@ async def google_proxy_request(search_string: str, location: str, domain: str):
 
                     content = await response.json()
                     result = dict(enumerate([result.get('url') for result in content.get('results').values()], start=1))
-                    logger.info(f"Google XMLProxy request successful. Responce: {result}")
+                    logger.info(f"Google XMLProxy request successful. Response: {result}")
                     return result
             except aiohttp.ClientError as e:
                 logger.error(f"Google XMLProxy request error: {e}")
@@ -173,12 +174,12 @@ def filter_urls(urls: list, stop_words: set) -> list:
     return filtered_urls
 
 
-async def process_urls(urls: list):
+async def process_urls(urls: dict):
     page_contents = {}
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
         tasks = []
-        for url in urls:
-            task = asyncio.create_task(fetch_page_content(session, url))
+        for num_of_url, url in urls.items():
+            task = asyncio.create_task(fetch_page_content(session, url, num_of_url))
             tasks.append(task)
         results = await asyncio.gather(*tasks)
         for url, content in results:
@@ -187,11 +188,12 @@ async def process_urls(urls: list):
     return page_contents
 
 
-async def fetch_page_content(session, url: str):
-    logger.info(f"Обрабатываем страницу {url}...")
+async def fetch_page_content(session, url: str, num_of_url: int):
+    logger.info(f"Обрабатываем {num_of_url if num_of_url != 0 else 'оригинальную'} страницу {url}...")
     try:
+        ua = UserAgent()
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            'User-Agent': ua.random
         }
 
         ssl_context = ssl.create_default_context()
