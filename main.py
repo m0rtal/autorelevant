@@ -41,7 +41,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
 
     except Exception as e:
         logger.error(f"Error processing request: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
 
 @app.get("/search-google/")
