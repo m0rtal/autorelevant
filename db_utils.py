@@ -14,6 +14,7 @@ class UserRequest(Base):
     search_string = Column(String)
     region = Column(String)
     domain = Column(String)
+    requested_at = Column(DateTime(), default=datetime.now)
 
 
 class SearchResult(Base):
@@ -21,8 +22,7 @@ class SearchResult(Base):
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
     url = Column(String, nullable=False)
-    requested_at = Column(DateTime(), default=datetime.now)
-
+    position = Column(Integer, nullable=False)
 
 class PageContent(Base):
     __tablename__ = "page_content"
@@ -60,11 +60,11 @@ class Database:
                 logger.error(f"Error saving request {url}, {search_string}, {region}, {domain}: {e}")
                 raise e
 
-    async def save_search_results(self, request_id: int, urls: list):
+    async def save_search_results(self, request_id: int, urls: dict):
         async with self.async_session() as session:
             try:
                 async with session.begin():
-                    results = [SearchResult(request_id=request_id, url=url) for url in urls]
+                    results = [SearchResult(request_id=request_id, url=url, position=i) for i, url in urls.items()]
                     session.add_all(results)
                 await session.commit()
                 logger.info(f"Search results saved: {len(results)} items")
