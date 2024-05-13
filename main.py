@@ -26,7 +26,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
         db_request = await database.save_request(url, search_string, region, '')
         search_results = await yandex_xmlproxy_request(search_string=search_string, region=region)
         if search_results is not None:
-            decrease_qty, filtered_urls, increase_qty, lsi, new_lsi, new_increase = await process_search_results(background_tasks, database,
+            decrease_qty, filtered_urls, increase_qty, lsi = await process_search_results(background_tasks, database,
                                                                                           db_request, search_results,
                                                                                           url)
 
@@ -36,9 +36,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                                           increase_qty.items()] if not increase_qty.empty else [],
                 'уменьшить частотность': [f"{key}: {value}" for key, value in
                                           decrease_qty.items()] if not decrease_qty.empty else [],
-                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url},
-                'new_lsi': new_lsi,
-                'new_increase': new_increase
+                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                 }
 
     except Exception as e:
@@ -66,6 +64,7 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
                                           decrease_qty.items()] if not decrease_qty.empty else [],
                 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                 }
+
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

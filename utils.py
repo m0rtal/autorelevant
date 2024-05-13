@@ -52,16 +52,6 @@ async def process_search_results(background_tasks, database, db_request, search_
     # Вычисляем разность между столбцами
     merged_df['diff'] = merged_df['median_freq'] - merged_df['main_freq']
     merged_df = merged_df.apply(ceil).astype(int)
-    # блок lsi заполнен 100 проц 10 фраз
-    # < 10 фраз - блок увеличить
-    # увеличить сравнивает с медианной
-    # не больше 10 слов
-    # if len(lsi) <= 10:
-    #   add from increase qty
-    #
-    # if increase qty <= median:
-    #   add into it
-
     lsi = merged_df[(merged_df['main_freq'] == 0) & (merged_df['median_freq'] > 0)]['median_freq']
     lsi = lsi.sort_values(ascending=False)
     increase_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] > 0)]['diff']
@@ -69,14 +59,16 @@ async def process_search_results(background_tasks, database, db_request, search_
     decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
     decrease_qty = decrease_qty.sort_values(ascending=True)
 
-    if len(lsi) < 10 and len(increase_qty) > 10:
-        need_to_add = 10 - len(lsi)
-        new_lsi = pd.concat([lsi, increase_qty[:need_to_add]])
-        new_increase = increase_qty[need_to_add:]
-        return decrease_qty, filtered_urls, increase_qty, lsi, new_lsi, new_increase
+    if len(lsi) < 20:
+        need_to_add = 20 - len(lsi)
+        lsi = pd.concat([lsi, increase_qty[:need_to_add]])
+        increase_qty = increase_qty[:need_to_add].apply(lambda x: x - 1 if x > 1 else 0). \
+            where(lambda x: x > 0). \
+            dropna(). \
+            astype(int)
 
     logger.info('Обработка запроса завершена успешно')
-    return decrease_qty, filtered_urls, increase_qty, lsi, 0, 0
+    return decrease_qty, filtered_urls, increase_qty, lsi
 
 
 async def parse_xml(xml_string):
