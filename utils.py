@@ -58,6 +58,15 @@ async def process_search_results(background_tasks, database, db_request, search_
     increase_qty = increase_qty.sort_values(ascending=False)
     decrease_qty = merged_df[(merged_df['main_freq'] > 0) & (merged_df['diff'] <= -10)]['diff']
     decrease_qty = decrease_qty.sort_values(ascending=True)
+
+    if len(lsi) < 20:
+        need_to_add = 20 - len(lsi)
+        lsi = pd.concat([lsi, increase_qty[:need_to_add]])
+        increase_qty = increase_qty[:need_to_add].apply(lambda x: x - 1 if x > 1 else 0). \
+            where(lambda x: x > 0). \
+            dropna(). \
+            astype(int)
+
     logger.info('Обработка запроса завершена успешно')
     return decrease_qty, filtered_urls, increase_qty, lsi
 

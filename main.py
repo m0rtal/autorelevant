@@ -64,6 +64,7 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
                                           decrease_qty.items()] if not decrease_qty.empty else [],
                 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                 }
+
     except Exception as e:
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
