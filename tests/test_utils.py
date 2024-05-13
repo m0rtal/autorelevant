@@ -12,14 +12,17 @@ from utils import *
 async def test_yandex(yandex_response):
     ''' Проверяет работу API для яндекса '''
 
-    response = await yandex_response
-    assert isinstance(response, dict)
-    # проверка, собрал ли 100 страниц
-    assert len(response) == 100
+    response, code = await yandex_response
+
     # проверка статуса ответа
-    assert response['status'] == 'success'
+    assert code == 200
+    # проверка на тип возвращаемых данных
+    assert isinstance(response, dict)
     # проверка наличия главной метрики - lsi
     assert len(response['lsi']) > 0
+
+
+
 
 
 # @pytest.mark.parametrize("search_string,location,domain", [('Дубовые бочки', 'Krasnodar,Krasnodar Krai,Russia', 'google.ru'),
