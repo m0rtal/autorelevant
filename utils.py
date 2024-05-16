@@ -5,6 +5,7 @@ from collections import Counter
 from xml.etree import ElementTree as ET
 
 import aiohttp
+from aiohttp.http_exceptions import HttpProcessingError
 import pandas as pd
 import tldextract
 from bs4 import BeautifulSoup
@@ -100,8 +101,11 @@ async def yandex_xmlproxy_request(search_string: str, region: str, user_id: str 
 
                 content = await response.text()
                 result = await parse_xml(content)
+                if len(result) == 0:
+                    raise HttpProcessingError(code=500, message='Page is empty or been processed in wrong way ')
+
                 result = dict(enumerate(result, start=1))
-                logger.info(f"Yandex XMLProxy request successful. Responce: {result}")
+                logger.info(f"Yandex XMLProxy request successful. Response: {result}")
                 return result
         except aiohttp.ClientError as e:
             logger.error(f"Yandex XMLProxy request error: {e}")
@@ -132,8 +136,9 @@ async def google_proxy_request(search_string: str, location: str, domain: str):
 
                 content = await response.json()
                 result = dict(enumerate([result.get('link') for result in content.get('organic_results')], start=1))
-                logger.info(f"Google SERP API request successful. Responce: {result}")
+                logger.info(f"Google SERP API request successful. Response: {result}")
                 return result
+
         except aiohttp.ClientError as e:
             logger.error(f"Google SERP API request error: {e}")
             url = 'https://xmlstock.com/google/json/'
