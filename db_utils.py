@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import declarative_base, sessionmaker
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, Float, select, func
 
 Base = declarative_base()
 
@@ -30,6 +30,26 @@ class PageContent(Base):
     request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
     url = Column(String, nullable=False)
     content = Column(String, nullable=False)
+
+class DecreaseFrequency(Base):
+    __tablename__ = "decrease_frequency"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
+    word = Column(String, nullable=False)
+    frequency_change = Column(Float, nullable=False)
+
+class IncreaseFrequency(Base):
+    __tablename__ = "increase_frequency"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
+    word = Column(String, nullable=False)
+    frequency_change = Column(Float, nullable=False)
+
+class LSI(Base):
+    __tablename__ = "lsi"
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    request_id = Column(Integer, ForeignKey("requests.id"), nullable=False)
+    word = Column(String, nullable=False)
 
 
 class Database:
@@ -85,4 +105,72 @@ class Database:
                 logger.info(f"Page contents saved: {len(page_contents)} items")
             except Exception as e:
                 logger.error(f"Error saving page contents: {e}")
+                raise e
+
+    async def save_decrease_frequency(self, request_id: int, changes: dict):
+        async with self.async_session() as session:
+            try:
+                async with session.begin():
+                    decrease_changes = [
+                        DecreaseFrequency(request_id=request_id, word=word, frequency_change=freq)
+                        for word, freq in changes.items()
+                    ]
+                    session.add_all(decrease_changes)
+                await session.commit()
+                logger.info(f"Decrease frequency changes saved: {len(decrease_changes)} items")
+            except Exception as e:
+                logger.error(f"Error saving decrease frequency changes: {e}")
+                raise e
+
+    async def save_increase_frequency(self, request_id: int, changes: dict):
+        async with self.async_session() as session:
+            try:
+                async with session.begin():
+                    increase_changes = [
+                        IncreaseFrequency(request_id=request_id, word=word, frequency_change=freq)
+                        for word, freq in changes.items()
+                    ]
+                    session.add_all(increase_changes)
+                await session.commit()
+                logger.info(f"Increase frequency changes saved: {len(increase_changes)} items")
+            except Exception as e:
+                logger.error(f"Error saving increase frequency changes: {e}")
+                raise e
+
+    async def save_lsi(self, request_id: int, words: list):
+        async with self.async_session() as session:
+            try:
+                async with session.begin():
+                    lsi_changes = [
+                        LSI(request_id=request_id, word=word)
+                        for word in words
+                    ]
+                    session.add_all(lsi_changes)
+                await session.commit()
+                logger.info(f"LSI words saved: {len(lsi_changes)} items")
+            except Exception as e:
+                logger.error(f"Error saving LSI words: {e}")
+                raise e
+
+    async def get_lsi_words(self, url_pattern: str, date_from: datetime):
+        async with self.async_session() as session:
+            try:
+                async with session.begin():
+                    # Объединяем запросы в один, используя подзапрос и join
+                    stmt = (
+                        select(LSI.word, func.count(LSI.word).label('count'))
+                        .join(UserRequest, LSI.request_id == UserRequest.id)
+                        .where(UserRequest.url.like(f"%{url_pattern}%"))
+                        .where(UserRequest.requested_at >= date_from)
+                        .group_by(LSI.word)
+                        .order_by(func.count(LSI.word).desc())
+                    )
+                    result = await session.execute(stmt)
+                    lsi_words = {row[0]: row[1] for row in result.fetchall()}
+
+                    logger.info(f"LSI words retrieved successfully for URL pattern: {url_pattern}")
+                    return lsi_words
+
+            except Exception as e:
+                logger.error(f"Error retrieving LSI words: {e}")
                 raise e

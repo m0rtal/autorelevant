@@ -67,6 +67,11 @@ async def process_search_results(background_tasks, database, db_request, search_
             increase_qty[index] -= lsi_dict.get(index, 0)
         increase_qty = increase_qty.mask(increase_qty <= 0).dropna()
 
+    # Сохранение результатов в базу данных
+    background_tasks.add_task(database.save_decrease_frequency, db_request.id, decrease_qty.to_dict())
+    background_tasks.add_task(database.save_increase_frequency, db_request.id, increase_qty.to_dict())
+    background_tasks.add_task(database.save_lsi, db_request.id, list(lsi.keys()))
+
     logger.info('Обработка запроса завершена успешно')
     return decrease_qty, filtered_urls, increase_qty, lsi
 

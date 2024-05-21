@@ -5,6 +5,7 @@ from db_utils import Database
 from logger import logger
 from utils import process_search_results, yandex_xmlproxy_request, google_proxy_request
 
+from datetime import datetime, timedelta
 
 async def startup():
     # Создание таблиц, если они еще не созданы
@@ -69,6 +70,21 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
         logger.error(f"Error processing request: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+
+@app.get("/result-lsi/")
+async def result_lsi(url: str = Query(...)):
+    """Возвращает все слова lsi с числом встречаемости для запросов, где URL похож на передаваемый."""
+    try:
+        database = Database(DATABASE_URL)
+        # Определяем дату 30 дней назад
+        date_30_days_ago = datetime.now() - timedelta(days=30)
+        lsi_words = await database.get_lsi_words(url, date_30_days_ago)
+
+        return {"status": "success", "lsi_words": lsi_words}
+
+    except Exception as e:
+        logger.error(f"Error processing LSI words request: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 if __name__ == "__main__":
     import uvicorn
