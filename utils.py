@@ -68,9 +68,9 @@ async def process_search_results(background_tasks, database, db_request, search_
         increase_qty = increase_qty.mask(increase_qty <= 0).dropna()
 
     # Сохранение результатов в базу данных
-    background_tasks.add_task(database.save_decrease_frequency, db_request.id, decrease_qty.to_dict())
-    background_tasks.add_task(database.save_increase_frequency, db_request.id, increase_qty.to_dict())
-    background_tasks.add_task(database.save_lsi, db_request.id, list(lsi.keys()))
+        background_tasks.add_task(database.save_decrease_frequency, db_request.id, decrease_qty.to_dict())
+        background_tasks.add_task(database.save_increase_frequency, db_request.id, increase_qty.to_dict())
+        background_tasks.add_task(database.save_lsi, db_request.id, list(lsi.keys()))
 
     logger.info('Обработка запроса завершена успешно')
     return decrease_qty, filtered_urls, increase_qty, lsi
@@ -268,3 +268,24 @@ async def get_median_lemmatized_word_frequency(contents):
     median_frequencies = df.median()
     median_frequencies = median_frequencies.sort_values(ascending=False)
     return median_frequencies
+
+
+def merge_responses(dict1, dict2):
+    merged_frequency = dict1.get('увеличить частотность', []) + dict2.get('увеличить частотность', [])
+    merged_frequency += dict1.get('уменьшить частотность', []) + dict2.get('уменьшить частотность', [])
+
+    frequency_dict = {}
+    for item in merged_frequency:
+        key, value = item.split(':')
+        key = key.strip()
+        value = int(value.strip())
+        frequency_dict[key] = frequency_dict.get(key, 0) + value
+
+    merged_lsi = set(dict1.get('lsi', []) + dict2.get('lsi', []))
+
+    merged_dict = {
+        'увеличить частотность': [f'{key}: {value}' for key, value in frequency_dict.items()],
+        'lsi': list(merged_lsi)
+    }
+
+    return merged_dict
