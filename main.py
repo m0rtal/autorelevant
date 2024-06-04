@@ -3,7 +3,8 @@ from io import BytesIO
 
 import aiohttp
 import pandas as pd
-from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, File, UploadFile, Request
+from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, UploadFile
+from fastapi.responses import StreamingResponse
 
 from config import DATABASE_URL
 from db_utils import Database
@@ -24,75 +25,90 @@ app = FastAPI()
 app.add_event_handler("startup", startup)
 
 
-# pip install openpyxl
-async def get_json(result_df: pd.DataFrame,
-                   observ: pd.Series,
+async def get_json(observ: pd.Series,
                    background_tasks):
-        ya_params = {
-            'url': observ["URL"].to_string(index=False),
-            'search_string': observ['Запрос'].to_string(index=False),
-            'region': observ['yandex_region'].to_string(index=False)
-        }
 
-        google_params = {
-            'url': observ["URL"].to_string(index=False),
-            'search_string': observ['Запрос'].to_string(index=False),
-            'location': observ['google_region'].to_string(index=False),
-            'domain': 'google.ru'
-        }
+    url = observ["URL"].to_string(index=False)
+    search_string = observ['Запрос'].to_string(index=False)
+
+    # обращаемся к существующим API-методам напрямую
+    ya_data = await process_url(
+        background_tasks=background_tasks,
+        url=url,
+        search_string=search_string,
+        region=observ['yandex_region'].to_string(index=False)
+    )
+    google_data = await search_google(
+        background_tasks=background_tasks,
+        url=url,
+        search_string=search_string,
+        location=observ['google_region'].to_string(index=False),
+        domain='google.ru'
+    )
+
+    # заранее сохраним урлы, чтобы корректно соеденить ответы
+    ya_urls = ya_data.pop('обработанные ссылки').items()
+    google_urls = google_data.pop('обработанные ссылки').items()
+    # соединяем ответы
+    responses = merge_responses(ya_data, google_data)
+    # формируем конечный ответ
+    result = {
+        'ID': observ['ID'].to_string(index=False),
+        'search_string': observ['Запрос'].to_string(index=False),
+        'url': observ['URL'].to_string(index=False),
+        'LSI': responses['lsi'],
+        'increase_qty': responses['увеличить частотность'],
+        'decrease_qty': responses['уменьшить частотность'],
+        'ya_region': observ['yandex_region'].to_string(index=False),
+        'google_region': observ['google_region'].to_string(index=False),
+        'ya_urls': ya_urls,
+        'google_urls': google_urls
+    }
+
+    return result
 
 
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get('http://0.0.0.0:5000/process-url/', params=ya_params) as response:
-                    ya_data = await response.json() if response.status == 200 else None
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get('http://0.0.0.0:5000/search-google', params=google_params) as response:
-                    google_data = await response.json() if response.status == 200 else None
-
-        except aiohttp.ClientError as e:
-            logger.error(f"Google XMLProxy request error: {e}")
-            return None
-
-        if ya_data is None or google_data is None:
-            return None
-
-        ya_urls = ya_data.pop('обработанные ссылки').items()
-        google_urls = google_data.pop('обработанные ссылки').items()
-        google_data.__delitem__('status')
-        ya_data.__delitem__('status')
-
-        result = merge_responses(ya_data, google_data)
-
-        print('test')
-        return None
-
-
+# pip install openpyxl
 @app.post('/process_file/')
 async def create_upload_file(background_tasks: BackgroundTasks, file: UploadFile):
-    content = await file.read()
-    df = pd.read_excel(BytesIO(content))
-    result_df = pd.DataFrame(columns=['ID', 'LSI', 'search_string', 'url', 'region', 'increase_qty', 'decrease_qty'])
-    tasks = []
+    try:
+        content = await file.read()
+        df = pd.read_excel(BytesIO(content))
+        result_df = pd.DataFrame(
+            columns=['ID', 'search_string', 'url', 'LSI', 'increase_qty', 'decrease_qty', 'ya_region', 'google_region',
+                     'ya_urls', 'google_urls'])
 
-    # for id in df.ID:
-    yandex_tasks = []
-    google_tasks = []
+        for id in df.ID:
+            observ = df[df['ID'] == id]
+            result = await get_json(observ,
+                            background_tasks)
 
-    for id in df.ID:
-        observ = df[df['ID'] == id]
-        ya_task = asyncio.create_task(get_json(result_df,
-                                               observ,
-                                               background_tasks))
-        yandex_tasks.append(ya_task)
-        # google_tasks.append(google_task)
+            # для сохранения в Excel в виде строки
+            result['LSI'] = ' '.join(result['LSI'])
+            result['increase_qty'] = ' '.join(result['increase_qty'])
+            result['decrease_qty'] = ' '.join(result['decrease_qty'])
+            result['ya_urls'] = ' '.join(dict(result['ya_urls']).values()) # возвращает объект dict_items, поэтому заново его обьявляю dict`ом
+            result['google_urls'] = ' '.join(dict(result['google_urls']).values())
+            result = pd.DataFrame([result], columns=result_df.columns)
 
-    ya_result = asyncio.gather(yandex_tasks)
-    google_result = asyncio.gather(google_tasks)
+            result_df = pd.concat([result_df, result])
+            logger.info(f'{id} is saved')
 
-    return {'content': df}
+        buffer = BytesIO()
+        with pd.ExcelWriter(buffer) as writer:
+            result_df.to_excel(writer, index=False)
+
+        logger.info('File created and returned')
+
+        return StreamingResponse(
+            BytesIO(buffer.getvalue()),
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers={"Content-Disposition": f"attachment; filename=data.csv"}
+        )
+
+    except Exception as e:
+        logger.error(f"Error processing request: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
 
 @app.get("/process-url/")

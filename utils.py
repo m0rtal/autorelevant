@@ -274,17 +274,23 @@ def merge_responses(dict1, dict2):
     merged_frequency = dict1.get('увеличить частотность', []) + dict2.get('увеличить частотность', [])
     merged_frequency += dict1.get('уменьшить частотность', []) + dict2.get('уменьшить частотность', [])
 
-    frequency_dict = {}
+    increase_frequency_dict = {}
+    decrease_frequency_dict = {}
+
     for item in merged_frequency:
         key, value = item.split(':')
         key = key.strip()
-        value = int(value.strip())
-        frequency_dict[key] = frequency_dict.get(key, 0) + value
+        value = float(value.strip())
+        if value >= 0:
+            increase_frequency_dict[key] = increase_frequency_dict.get(key, 0) + value
+        else:
+            decrease_frequency_dict[key] = decrease_frequency_dict.get(key, 0) + value
 
     merged_lsi = set(dict1.get('lsi', []) + dict2.get('lsi', []))
 
     merged_dict = {
-        'увеличить частотность': [f'{key}: {value}' for key, value in frequency_dict.items()],
+        'увеличить частотность': [f'{key}: {value}' for key, value in increase_frequency_dict.items()],
+        'уменьшить частотность': [f'{key}: {value}' for key, value in decrease_frequency_dict.items()],
         'lsi': list(merged_lsi)
     }
 
