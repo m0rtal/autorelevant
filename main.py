@@ -1,10 +1,9 @@
-import asyncio
+import json
 from io import BytesIO
 
-import aiohttp
 import pandas as pd
-from fastapi import FastAPI, Query, HTTPException, BackgroundTasks, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Query, HTTPException, BackgroundTasks
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from config import DATABASE_URL
 from db_utils import Database
@@ -25,8 +24,10 @@ app = FastAPI()
 app.add_event_handler("startup", startup)
 
 
-async def get_json(observ: pd.Series,
-                   background_tasks):
+async def get_json(observ: pd.DataFrame,
+                   ya_region: str,
+                   google_region: str,
+                   background_tasks: BackgroundTasks):
 
     url = observ["URL"].to_string(index=False)
     search_string = observ['Запрос'].to_string(index=False)
@@ -36,13 +37,13 @@ async def get_json(observ: pd.Series,
         background_tasks=background_tasks,
         url=url,
         search_string=search_string,
-        region=observ['yandex_region'].to_string(index=False)
+        region=ya_region
     )
     google_data = await search_google(
         background_tasks=background_tasks,
         url=url,
         search_string=search_string,
-        location=observ['google_region'].to_string(index=False),
+        location=google_region,
         domain='google.ru'
     )
 
@@ -59,8 +60,6 @@ async def get_json(observ: pd.Series,
         'LSI': responses['lsi'],
         'increase_qty': responses['увеличить частотность'],
         'decrease_qty': responses['уменьшить частотность'],
-        'ya_region': observ['yandex_region'].to_string(index=False),
-        'google_region': observ['google_region'].to_string(index=False),
         'ya_urls': ya_urls,
         'google_urls': google_urls
     }
@@ -70,10 +69,8 @@ async def get_json(observ: pd.Series,
 
 # pip install openpyxl
 @app.post('/process_file/')
-async def create_upload_file(background_tasks: BackgroundTasks, file: UploadFile):
+async def create_upload_file(background_tasks: BackgroundTasks, df: dict):
     try:
-        content = await file.read()
-        df = pd.read_excel(BytesIO(content))
         result_df = pd.DataFrame(
             columns=['ID', 'search_string', 'url', 'LSI', 'increase_qty', 'decrease_qty', 'ya_region', 'google_region',
                      'ya_urls', 'google_urls'])
@@ -113,7 +110,7 @@ async def create_upload_file(background_tasks: BackgroundTasks, file: UploadFile
 
 @app.get("/process-url/")
 async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), search_string: str = Query(...),
-                      region: str = Query(...)):
+                      region: str = Query(...), return_as_json: bool = False):
     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
     try:
         database = Database(DATABASE_URL)
@@ -124,6 +121,14 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                                                                                           db_request, search_results,
                                                                                           url)
         # background_tasks.add_task(database.save_results, db_request, decrease_qty, increase_qty, lsi)
+        response = {"status": "success",
+                    'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
+                    'увеличить частотность': increase_qty,
+                    'уменьшить частотность': decrease_qty,
+                    'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                    }
+        if return_as_json:
+            return json.dumps(response, indent=4, default=str, ensure_ascii=False).encode('utf8')
 
         return {"status": "success",
                 'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
@@ -142,7 +147,9 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
 @app.get("/search-google/")
 async def search_google(background_tasks: BackgroundTasks, url: str = Query(...), search_string: str = Query(...),
                         location: str = Query(...),
-                        domain: str = Query(...)):
+                        domain: str = Query(...),
+                        return_as_json: int = 0,
+                        ):
     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
     try:
         database = Database(DATABASE_URL)
@@ -152,8 +159,15 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
             decrease_qty, filtered_urls, increase_qty, lsi = await process_search_results(background_tasks, database,
                                                                                           db_request, search_results,
                                                                                           url)
+        response = {"status": "success",
+                     'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
+                     'увеличить частотность': increase_qty,
+                     'уменьшить частотность': decrease_qty,
+                     'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                     }
 
-        # background_tasks.add_task(database.save_results, db_request, decrease_qty, increase_qty, lsi)
+        if return_as_json:
+            return json.dumps(response, indent=4, default=str, ensure_ascii=False).encode('utf8')
 
         return {"status": "success",
                 'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
@@ -189,3 +203,13 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host='0.0.0.0', port=5000)
+
+
+"""
+объеденить данные 
+превратить в два пандаса
+один для яндекса другой гугл 
+ток нужные поля в апиху 
+в логи
+
+"""
