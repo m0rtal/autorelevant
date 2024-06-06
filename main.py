@@ -110,7 +110,7 @@ async def create_upload_file(background_tasks: BackgroundTasks, df: dict):
 
 @app.get("/process-url/")
 async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), search_string: str = Query(...),
-                      region: str = Query(...), return_as_json: bool = False):
+                      region: str = Query(...), return_as_json: int = 0):
     """Получает параметры запроса, сохраняет их и отправляет на обработку."""
     try:
         database = Database(DATABASE_URL)
@@ -122,13 +122,13 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                                                                                           url)
         # background_tasks.add_task(database.save_results, db_request, decrease_qty, increase_qty, lsi)
         response = {"status": "success",
-                    'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
-                    'увеличить частотность': increase_qty,
-                    'уменьшить частотность': decrease_qty,
-                    'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
-                    }
+                     'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
+                     'увеличить частотность': increase_qty.to_dict(),
+                     'уменьшить частотность': decrease_qty.to_dict(),
+                     'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                     }
         if return_as_json:
-            return json.dumps(response, indent=4, default=str, ensure_ascii=False).encode('utf8')
+            return json.dumps(response, indent=4, default=dict  , ensure_ascii=False).encode('utf8')
 
         return {"status": "success",
                 'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
@@ -161,13 +161,13 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
                                                                                           url)
         response = {"status": "success",
                      'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
-                     'увеличить частотность': increase_qty,
-                     'уменьшить частотность': decrease_qty,
+                     'увеличить частотность': increase_qty.to_dict(),
+                     'уменьшить частотность': decrease_qty.to_dict(),
                      'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                      }
 
         if return_as_json:
-            return json.dumps(response, indent=4, default=str, ensure_ascii=False).encode('utf8')
+            return json.dumps(response, indent=4, default=dict, ensure_ascii=False).encode('utf8')
 
         return {"status": "success",
                 'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
