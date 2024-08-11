@@ -61,10 +61,16 @@ class Database:
     async def create_all(self):
         async with self.engine.begin() as conn:
             try:
+                # Настройка WAL
+                await conn.exec_driver_sql('PRAGMA journal_mode=WAL;')
+                # Увеличение кэша страниц
+                await conn.exec_driver_sql('PRAGMA cache_size=10000;')  # Увеличьте значение в зависимости от доступной памяти
+                # Настройка синхронизации базы данных
+                await conn.exec_driver_sql('PRAGMA synchronous=OFF;')  # Или OFF для еще большей производительности, но меньшей надежности
+                # Создание таблиц
                 await conn.run_sync(self.Base.metadata.create_all)
-                logger.info("Tables created successfully")
             except Exception as e:
-                logger.error(f"Error creating tables: {e}")
+                logger.error(f"Error creating tables and indexes: {e}")
                 raise e
 
     async def save_request(self, url: str, search_string: str, region: str, domain: str):

@@ -11,3 +11,4 @@ pandas
 pymystem3
 fake_useragent
 tldextract
+python-dotenv
