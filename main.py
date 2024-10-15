@@ -136,7 +136,8 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                                           increase_qty.items()] if not increase_qty.empty else [],
                 'уменьшить частотность': [f"{key}: {value}" for key, value in
                                           decrease_qty.items()] if not decrease_qty.empty else [],
-                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                # 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items()}
                 }
 
     except Exception as e:
@@ -163,7 +164,8 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
                      'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
                      'увеличить частотность': increase_qty.to_dict(),
                      'уменьшить частотность': decrease_qty.to_dict(),
-                     'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                     # 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                     'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items()}
                      }
 
         if return_as_json:

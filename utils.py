@@ -28,7 +28,14 @@ async def process_search_results(background_tasks, database, db_request, search_
     filtered_urls = filter_urls(list(search_results.values()), stop_words)[:30]
     filtered_urls = set(filtered_urls)
     filtered_urls = {i: page_url for i, page_url in search_results.items() if page_url in filtered_urls}
-    filtered_urls[0] = url
+    # filtered_urls[0] = url
+    # Проверка и добавление основного URL
+    if url not in filtered_urls.values():
+        if url in search_results.values():
+            position = next(key for key, value in search_results.items() if value == url)
+            filtered_urls[position] = url
+        else:
+            filtered_urls[100] = url
     logger.info('Urls are filtered')
     # Асинхронно обрабатываем все URL-адреса и сохраняем их текстовое содержимое в базе данных
     contents = await process_urls(filtered_urls)
