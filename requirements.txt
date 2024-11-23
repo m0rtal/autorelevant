@@ -13,3 +13,4 @@ fake_useragent
 tldextract
 python-dotenv
 html5lib
+openpyxl

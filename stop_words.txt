@@ -5,6 +5,7 @@ sima-land
 yell
 regtorg
 avito
+Avito
 yandex
 youtube
 rutube

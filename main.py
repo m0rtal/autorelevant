@@ -1,3 +1,4 @@
+import asyncio
 import json
 from io import BytesIO
 
@@ -12,6 +13,7 @@ from utils import process_search_results, yandex_xmlproxy_request, google_proxy_
 
 from datetime import datetime, timedelta
 
+semaphore = asyncio.Semaphore(10)
 
 async def startup():
     # Создание таблиц, если они еще не созданы
@@ -67,7 +69,6 @@ async def get_json(observ: pd.DataFrame,
     return result
 
 
-# pip install openpyxl
 @app.post('/process_file/')
 async def create_upload_file(background_tasks: BackgroundTasks, df: dict):
     try:
@@ -75,21 +76,28 @@ async def create_upload_file(background_tasks: BackgroundTasks, df: dict):
             columns=['ID', 'search_string', 'url', 'LSI', 'increase_qty', 'decrease_qty', 'ya_region', 'google_region',
                      'ya_urls', 'google_urls'])
 
-        for id in df.ID:
-            observ = df[df['ID'] == id]
-            result = await get_json(observ,
-                            background_tasks)
+        async def process_row(id):
+            async with semaphore:
+                observ = df[df['ID'] == id]
+                result = await get_json(observ,
+                                       background_tasks)
 
-            # для сохранения в Excel в виде строки
-            result['LSI'] = ' '.join(result['LSI'])
-            result['increase_qty'] = ' '.join(result['increase_qty'])
-            result['decrease_qty'] = ' '.join(result['decrease_qty'])
-            result['ya_urls'] = ' '.join(dict(result['ya_urls']).values()) # возвращает объект dict_items, поэтому заново его обьявляю dict`ом
-            result['google_urls'] = ' '.join(dict(result['google_urls']).values())
-            result = pd.DataFrame([result], columns=result_df.columns)
+                # для сохранения в Excel в виде строки
+                result['LSI'] = ' '.join(result['LSI'])
+                result['increase_qty'] = ' '.join(result['increase_qty'])
+                result['decrease_qty'] = ' '.join(result['decrease_qty'])
+                result['ya_urls'] = ' '.join(dict(result['ya_urls']).values()) # возвращает объект dict_items, поэтому заново его обьявляю dict`ом
+                result['google_urls'] = ' '.join(dict(result['google_urls']).values())
+                result = pd.DataFrame([result], columns=result_df.columns)
 
+                return result
+
+        tasks = [process_row(id) for id in df['ID']]
+        results = await asyncio.gather(*tasks)
+
+        for result in results:
             result_df = pd.concat([result_df, result])
-            logger.info(f'{id} is saved')
+            logger.info(f'{result["ID"].to_string(index=False)} is saved')
 
         buffer = BytesIO()
         with pd.ExcelWriter(buffer) as writer:
@@ -125,7 +133,7 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                      'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
                      'увеличить частотность': increase_qty.to_dict(),
                      'уменьшить частотность': decrease_qty.to_dict(),
-                     'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                     'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items()}
                      }
         if return_as_json:
             return json.dumps(response, indent=4, default=dict  , ensure_ascii=False).encode('utf8')
@@ -136,7 +144,6 @@ async def process_url(background_tasks: BackgroundTasks, url: str = Query(...), 
                                           increase_qty.items()] if not increase_qty.empty else [],
                 'уменьшить частотность': [f"{key}: {value}" for key, value in
                                           decrease_qty.items()] if not decrease_qty.empty else [],
-                # 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items()}
                 }
 
@@ -164,7 +171,6 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
                      'lsi': [key for key in lsi.keys()] if not lsi.empty else [],
                      'увеличить частотность': increase_qty.to_dict(),
                      'уменьшить частотность': decrease_qty.to_dict(),
-                     # 'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
                      'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items()}
                      }
 
@@ -177,7 +183,7 @@ async def search_google(background_tasks: BackgroundTasks, url: str = Query(...)
                                           increase_qty.items()] if not increase_qty.empty else [],
                 'уменьшить частотность': [f"{key}: {value}" for key, value in
                                           decrease_qty.items()] if not decrease_qty.empty else [],
-                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items() if page_url != url}
+                'обработанные ссылки': {i: page_url for i, page_url in filtered_urls.items()}
                 }
 
     except Exception as e:
@@ -205,13 +211,3 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(app, host='0.0.0.0', port=5000)
-
-
-"""
-объеденить данные 
-превратить в два пандаса
-один для яндекса другой гугл 
-ток нужные поля в апиху 
-в логи
-
-"""

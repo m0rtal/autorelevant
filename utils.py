@@ -13,11 +13,10 @@ from joblib import Parallel, delayed
 from numpy import ceil
 from pymystem3 import Mystem
 
-from config import xml_user, xml_key, google_api_key, russian_stop_words
+from config import xml_user, xml_key, google_api_key, russian_stop_words, top_n_results
 from logger import logger
 
 mystem = Mystem()
-
 
 async def process_search_results(background_tasks, database, db_request, search_results, url):
     # Планируем сохранение результатов поиска в фоне
@@ -25,7 +24,7 @@ async def process_search_results(background_tasks, database, db_request, search_
     # Загружаем стоп-слова из файла
     stop_words = load_stop_words("stop_words.txt")
     # Фильтруем URL-адреса по стоп-словам
-    filtered_urls = filter_urls(list(search_results.values()), stop_words)[:30]
+    filtered_urls = filter_urls(list(search_results.values()), stop_words)[:top_n_results]
     filtered_urls = set(filtered_urls)
     filtered_urls = {i: page_url for i, page_url in search_results.items() if page_url in filtered_urls}
     # filtered_urls[0] = url
@@ -126,7 +125,7 @@ async def yandex_xmlproxy_request(search_string: str, region: str, user_id: str 
 
     combined_results = {}
 
-    for page in range(3):
+    for page in range(2):
         page_results = await fetch_page(page)
         if page_results:
             combined_results.update(page_results)
@@ -203,14 +202,15 @@ def filter_urls(urls: list, stop_words: set) -> list:
     """Фильтрует URL-адреса по стоп-словам."""
     filtered_urls = []
     for url in urls:
-        if not any(stop_word in url for stop_word in stop_words):
+        lower_url = url.lower()
+        if not any(stop_word.lower() in lower_url for stop_word in stop_words):
             filtered_urls.append(url)
     return filtered_urls
 
 
 async def process_urls(urls: dict):
     page_contents = {}
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+    async with aiohttp.ClientSession() as session:
         tasks = []
         for num_of_url, url in urls.items():
             task = asyncio.create_task(fetch_page_content(session, url, num_of_url))
@@ -234,7 +234,7 @@ async def fetch_page_content(session, url: str, num_of_url: int):
         ssl_context.check_hostname = False
         ssl_context.verify_mode = ssl.CERT_NONE
 
-        async with session.get(url, ssl=ssl_context, headers=headers) as response:
+        async with session.get(url, ssl=ssl_context, headers=headers, timeout=3) as response:
             if response.status == 200:
                 content = await response.read()
                 soup = BeautifulSoup(content, "html5lib")

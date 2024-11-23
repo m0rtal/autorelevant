@@ -23,3 +23,4 @@ DATABASE_URL = "sqlite+aiosqlite:///database.sqlite"
 russian_stop_words = set(stopwords.words('russian'))
 cities = read_cities_from_file("cities.txt")
 russian_stop_words.update(cities)
+top_n_results = int(os.getenv("TOP_N_RESULTS"))
