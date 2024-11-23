@@ -12,3 +12,4 @@ pymystem3
 fake_useragent
 tldextract
 python-dotenv
+html5lib

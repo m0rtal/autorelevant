@@ -93,31 +93,44 @@ async def parse_xml(xml_string):
 
 
 async def yandex_xmlproxy_request(search_string: str, region: str, user_id: str = xml_user, api_key: str = xml_key):
-    url = 'https://xmlstock.com/yandex/xml/'
+    url = 'https://xmlstock.com/yandexlive/xml/'
 
-    params = {
-        'user': user_id,
-        'key': api_key,
-        'query': search_string,
-        'lr': region,
-        'groupby': 'mode=flat.groups-on-page=100.docs-in-group=1'
-    }
+    async def fetch_page(page: int):
+        params = {
+            'user': user_id,
+            'key': api_key,
+            'query': search_string,
+            'lr': region,
+            'domain': 'ru',
+            'ads': 0,
+            'tbm': 'turbo',
+            'page': page,
+            'groupby': 'mode=flat.groups-on-page=100.docs-in-group=1'
+        }
 
-    async with aiohttp.ClientSession() as session:
-        try:
-            async with session.get(url, params=params) as response:
-                if response.status != 200:
-                    logger.error(f"Yandex XMLProxy request error: HTTP status code {response.status}")
-                    return None
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get(url, params=params) as response:
+                    if response.status != 200:
+                        logger.error(f"Yandex XMLProxy request error: HTTP status code {response.status}")
+                        return None
 
-                content = await response.text()
-                result = await parse_xml(content)
-                result = dict(enumerate(result, start=1))
-                logger.info(f"Yandex XMLProxy request successful. Responce: {result}")
-                return result
-        except aiohttp.ClientError as e:
-            logger.error(f"Yandex XMLProxy request error: {e}")
-            return None
+                    content = await response.text()
+                    result = await parse_xml(content)
+                    result = dict(enumerate(result, start=page*10+1))
+                    logger.info(f"Yandex XMLProxy request successful. Response: {result}")
+                    return result
+            except aiohttp.ClientError as e:
+                logger.error(f"Yandex XMLProxy request error: {e}")
+                return None
+
+    combined_results = {}
+
+    for page in range(3):
+        page_results = await fetch_page(page)
+        if page_results:
+            combined_results.update(page_results)
+    return combined_results
 
 
 async def google_proxy_request(search_string: str, location: str, domain: str):
@@ -223,8 +236,8 @@ async def fetch_page_content(session, url: str, num_of_url: int):
 
         async with session.get(url, ssl=ssl_context, headers=headers) as response:
             if response.status == 200:
-                content = await response.text()
-                soup = BeautifulSoup(content, "html.parser")
+                content = await response.read()
+                soup = BeautifulSoup(content, "html5lib")
                 for script_or_style in soup(["script", "style"]):
                     script_or_style.decompose()
                 page_content = soup.get_text(separator=" ").strip()
